@@ -1,0 +1,17 @@
+{
+  "name": "@cloud-agent/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The contract: task, tool, and event types shared by all layers",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

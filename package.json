@@ -1,0 +1,32 @@
+{
+  "name": "cloud-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloud-based autonomous software engineering agent",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint .",
+    "dev:backend": "npm run dev --workspace @cloud-agent/backend",
+    "dev:frontend": "npm run dev --workspace @cloud-agent/frontend",
+    "dev:sandbox": "npm run dev --workspace @cloud-agent/sandbox-runner"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "eslint": "^9.8.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "openai": "^7.5.0"
+  }
+}

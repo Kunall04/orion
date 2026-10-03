@@ -10,6 +10,9 @@
  */
 
 import type { ToolDefinition } from '../llm/client';
+import Ajv from 'ajv';
+
+const ajv = new Ajv();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,6 +55,11 @@ export class ToolRegistry {
     const tool = this.tools.get(name);
     if (!tool) {
       return `Error: Unknown tool "${name}". Available tools: ${Array.from(this.tools.keys()).join(', ')}`;
+    }
+
+    const check = ajv.compile(tool.definition.parameters);
+    if (!check(args)) {
+      return `Error: invalid arguments for "${name}": ${ajv.errorsText(check.errors)}`;
     }
 
     try {

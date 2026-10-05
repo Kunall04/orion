@@ -27,6 +27,8 @@ export interface LLMResponse {
     name: string;
     arguments: Record<string, unknown>;
   }[];
+  /** Token counts for this call (prompt = everything we sent, resent every lap). */
+  usage?: { promptTokens: number; completionTokens: number };
 }
 
 /** Tool definition — tells the LLM "you have this tool available." */
@@ -83,6 +85,12 @@ export class OpenAIClient implements LLMClient {
     }
 
     const msg = choice.message;
+    const usage = response.usage
+      ? {
+          promptTokens: response.usage.prompt_tokens,
+          completionTokens: response.usage.completion_tokens,
+        }
+      : undefined;
 
     // The LLM might return tool calls — or it might just return text.
     // We need to handle both cases.
@@ -98,12 +106,14 @@ export class OpenAIClient implements LLMClient {
             // The LLM returns arguments as a JSON string — we parse it
             arguments: JSON.parse(tc.function.arguments),
           })),
+        usage,
       };
     }
 
     return {
       role: 'assistant',
       content: msg.content,
+      usage,
     };
   }
 }

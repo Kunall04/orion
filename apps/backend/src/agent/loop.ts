@@ -58,6 +58,7 @@ export type AgentEvent =
   | { type: 'thinking'; text: string }
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; name: string; result: string }
+  | { type: 'usage'; lap: number; promptTokens: number; completionTokens: number }
   | { type: 'message'; content: string }
   | { type: 'error'; message: string };
 
@@ -112,6 +113,8 @@ export class AgentLoop {
         this.emit({ type: 'error', message: `LLM error: ${msg}` });
         return `Error: LLM call failed — ${msg}`;
       }
+
+      if (response.usage) this.emit({ type: 'usage', lap: iteration, ...response.usage });
 
       // Step 2: If the LLM returned text with no tool calls, we're done
       if (!response.toolCalls || response.toolCalls.length === 0) {

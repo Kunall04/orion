@@ -14,6 +14,9 @@ import Ajv from 'ajv';
 
 const ajv = new Ajv();
 
+/** Max characters of tool output kept in the conversation. */
+export const MAX_OUTPUT = 10_000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -63,7 +66,11 @@ export class ToolRegistry {
     }
 
     try {
-      return await tool.execute(args, ctx);
+      const out = await tool.execute(args, ctx);
+      // Output is resent to the LLM every lap, so cap it (and say so, so the LLM knows).
+      return out.length > MAX_OUTPUT
+        ? `${out.slice(0, MAX_OUTPUT)}\n…[truncated, ${out.length - MAX_OUTPUT} more characters]`
+        : out;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return `Error executing tool "${name}": ${message}`;

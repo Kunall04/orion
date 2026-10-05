@@ -68,6 +68,11 @@ async function main() {
           console.log(`\n📤 Tool Result: ${event.name}`);
           console.log(`   Output: ${event.result}`);
           break;
+        case 'usage':
+          console.log(
+            `\n🔢 Lap ${event.lap}: ${event.promptTokens} tokens sent, ${event.completionTokens} received`,
+          );
+          break;
         case 'message':
           console.log(`\n💬 Agent: ${event.content}`);
           break;

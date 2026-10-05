@@ -23,23 +23,21 @@ describe('backend', () => {
   });
 
   it('POST /tasks accepts a valid body', async () => {
-  const app = buildApp();
-  const res = await app.inject({
-    method: 'POST',
-    url: '/tasks',
-    payload: { instruction: 'fix typo' },
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { instruction: 'fix typo' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, got: 'fix typo' });
   });
 
-  expect(res.statusCode).toBe(200);
-  expect(res.json()).toEqual({ ok: true, got: 'fix typo' });
-});
+  it('POST /tasks rejects an empty body', async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: 'POST', url: '/tasks', payload: {} });
 
-it('POST /tasks rejects an empty body', async () => {
-  const app = buildApp();
-  const res = await app.inject({ method: 'POST', url: '/tasks', payload: {} });
-
-  expect(res.statusCode).toBe(400);
-});
-
-
+    expect(res.statusCode).toBe(400);
+  });
 });

@@ -17,18 +17,22 @@ export function buildApp(): FastifyInstance {
     return { pong: true };
   });
 
-  app.post<{ Body : { instruction: string }}>( '/tasks', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['instruction'],
-        properties: { instruction: { type: 'string', minLength: 1 } },
+  app.post<{ Body: { instruction: string } }>(
+    '/tasks',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['instruction'],
+          properties: { instruction: { type: 'string', minLength: 1 } },
+        },
       },
     },
-  }, async(req)=>{
+    async (req) => {
       const { instruction } = req.body;
       return { ok: true, got: instruction };
-  });
+    },
+  );
 
   return app;
 }

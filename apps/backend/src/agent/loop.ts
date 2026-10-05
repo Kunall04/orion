@@ -146,7 +146,10 @@ export class AgentLoop {
           args: toolCall.arguments,
         });
 
-        const result = await this.tools.execute(toolCall.name, toolCall.arguments, this.ctx);
+        // Bad JSON from the model: tell it, don't run the tool with guessed arguments.
+        const result = toolCall.parseError
+          ? `Error: could not parse arguments for "${toolCall.name}": ${toolCall.parseError}. Send a valid JSON object.`
+          : await this.tools.execute(toolCall.name, toolCall.arguments, this.ctx);
 
         this.emit({ type: 'tool_result', name: toolCall.name, result });
 

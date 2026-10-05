@@ -34,4 +34,28 @@ describe('AgentLoop', () => {
       { type: 'usage', lap: 2, promptTokens: 150, completionTokens: 5 },
     ]);
   });
+  it('does not run a tool whose arguments were invalid JSON, and tells the LLM', async () => {
+    let ran = false;
+    const tools = new ToolRegistry();
+    tools.register('echo', { ...echoTool, execute: async () => ((ran = true), 'ran') });
+
+    const llm = fakeLLM([
+      {
+        role: 'assistant',
+        content: null,
+        toolCalls: [
+          { id: 'c1', name: 'echo', arguments: {}, parseError: 'Unexpected end of JSON' },
+        ],
+      },
+      { role: 'assistant', content: 'sorry' },
+    ]);
+
+    const events: AgentEvent[] = [];
+    const loop = new AgentLoop({ llm, tools, ctx: { cwd: '.' }, onEvent: (e) => events.push(e) });
+    await loop.run('x');
+
+    expect(ran).toBe(false);
+    const result = events.find((e) => e.type === 'tool_result');
+    expect(result).toMatchObject({ result: expect.stringContaining('could not parse arguments') });
+  });
 });

@@ -25,7 +25,11 @@ import { AgentLoop, type AgentEvent } from './loop';
 
 // 1. Create the LLM client
 //    This connects to OpenAI's API using your API key
-const llm = new OpenAIClient();
+const llm = new OpenAIClient(
+  process.env.LLM_API_KEY,
+  process.env.LLM_MODEL,
+  process.env.LLM_BASE_URL,
+);
 
 // 2. Create the tool registry and register our stub tools
 //    Later, we'll register real tools here (shell, file ops, etc.)

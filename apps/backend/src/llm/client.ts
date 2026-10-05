@@ -26,6 +26,8 @@ export interface LLMResponse {
     id: string;
     name: string;
     arguments: Record<string, unknown>;
+    /** Set when the model's arguments were not a valid JSON object; arguments is then {}. */
+    parseError?: string;
   }[];
   /** Token counts for this call (prompt = everything we sent, resent every lap). */
   usage?: { promptTokens: number; completionTokens: number };
@@ -43,6 +45,19 @@ export interface LLMClient {
   chat(messages: ChatCompletionMessageParam[], tools?: ToolDefinition[]): Promise<LLMResponse>;
 }
 
+/** The LLM sends arguments as JSON *text*; models sometimes write it badly. Never throw on that. */
+export function parseArgs(raw: string): { args: Record<string, unknown>; parseError?: string } {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      return { args: value as Record<string, unknown> };
+    }
+    return { args: {}, parseError: 'arguments must be a JSON object' };
+  } catch (err) {
+    return { args: {}, parseError: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // OpenAI Implementation
 // ---------------------------------------------------------------------------
@@ -51,8 +66,9 @@ export class OpenAIClient implements LLMClient {
   private openai: OpenAI;
   private model: string;
 
-  constructor(apiKey?: string, model = 'gpt-4o') {
-    this.openai = new OpenAI({ apiKey: apiKey ?? process.env.OPENAI_API_KEY });
+  constructor(apiKey?: string, model = 'gpt-4o', baseURL?: string) {
+    // baseURL lets us point at any OpenAI-compatible provider (Groq, Gemini, OpenRouter...)
+    this.openai = new OpenAI({ apiKey: apiKey ?? process.env.OPENAI_API_KEY, baseURL });
     this.model = model;
   }
 
@@ -100,12 +116,11 @@ export class OpenAIClient implements LLMClient {
         content: msg.content,
         toolCalls: msg.tool_calls
           .filter((tc) => tc.type === 'function')
-          .map((tc) => ({
-            id: tc.id,
-            name: tc.function.name,
-            // The LLM returns arguments as a JSON string — we parse it
-            arguments: JSON.parse(tc.function.arguments),
-          })),
+          .map((tc) => {
+            // The LLM returns arguments as a JSON string — we parse it (safely)
+            const { args, parseError } = parseArgs(tc.function.arguments);
+            return { id: tc.id, name: tc.function.name, arguments: args, parseError };
+          }),
         usage,
       };
     }

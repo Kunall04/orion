@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { replaceInFile } from './files';
+import { replaceInFile, resolveInside } from './files';
 
 async function fileWith(content: string) {
   const path = join(await mkdtemp(join(tmpdir(), 'orion-files-')), 'a.js');
@@ -37,5 +37,19 @@ describe('replaceInFile', () => {
 
   it('reports a missing file', async () => {
     expect(await replaceInFile('/nonexistent/file.txt', 'a', 'b')).toContain('does not exist');
+  });
+});
+
+describe('resolveInside', () => {
+  it('accepts paths inside the project', () => {
+    expect(resolveInside('/proj', 'src/a.js')).toBe('/proj/src/a.js');
+    expect(resolveInside('/proj', '/proj/src/a.js')).toBe('/proj/src/a.js');
+  });
+
+  it('rejects paths that escape the project', () => {
+    expect(resolveInside('/proj', '../etc/hosts')).toBeNull();
+    expect(resolveInside('/proj', 'src/../../etc/hosts')).toBeNull();
+    expect(resolveInside('/proj', '/etc/hosts')).toBeNull();
+    expect(resolveInside('/proj', '.')).toBeNull();
   });
 });

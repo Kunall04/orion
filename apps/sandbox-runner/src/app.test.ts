@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -45,6 +45,39 @@ describe('sandbox-runner', () => {
   it('POST /command rejects a missing command with 400', async () => {
     const app = await appInTempDir();
     const res = await app.inject({ method: 'POST', url: '/command', payload: {} });
+
+    expect(res.statusCode).toBe(400);
+  });
+  it('POST /replace edits a file inside the project', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orion-app-'));
+    await writeFile(join(dir, 'a.js'), 'const port = 3000;\n');
+    const app = buildApp({ workDir: dir, outDir: join(dir, 'out') });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/replace',
+      payload: { path: 'a.js', old_str: '3000', new_str: '4000' },
+    });
+
+    expect(res.json().output).toContain('Replaced 1');
+    expect(await readFile(join(dir, 'a.js'), 'utf8')).toBe('const port = 4000;\n');
+  });
+
+  it('POST /replace refuses a path outside the project', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/replace',
+      payload: { path: '../../../etc/hosts', old_str: 'a', new_str: 'b' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().output).toContain('inside the project folder');
+  });
+
+  it('POST /replace rejects a body with a missing field', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({ method: 'POST', url: '/replace', payload: { path: 'a.js' } });
 
     expect(res.statusCode).toBe(400);
   });

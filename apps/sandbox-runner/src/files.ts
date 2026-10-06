@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { relative, resolve, sep } from 'node:path';
 
 /**
  * Replace exact text in a file. By default the text must match exactly once,
@@ -28,4 +29,16 @@ export async function replaceInFile(
 
   await writeFile(path, content.split(oldStr).join(newStr));
   return `Replaced ${count} match(es) in ${path}.`;
+}
+
+/**
+ * Turn the agent's path into a real path, but only if it stays inside `root`.
+ * Returns null for anything that escapes (../, absolute paths elsewhere).
+ * ponytail: symlinks inside the project are not followed, the Docker box is the real wall.
+ */
+export function resolveInside(root: string, requested: string): string | null {
+  const full = resolve(root, requested);
+  const rel = relative(root, full);
+  if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || resolve(rel) === rel) return null;
+  return full;
 }

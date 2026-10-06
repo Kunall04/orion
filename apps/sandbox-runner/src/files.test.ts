@@ -2,6 +2,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { History } from './history';
 import { MAX_OUTPUT } from './shell';
 import { readFileSlice, replaceInFile, resolveInside } from './files';
 
@@ -11,33 +12,56 @@ async function fileWith(content: string) {
   return path;
 }
 
+const newHistory = async () => new History(join(await mkdtemp(join(tmpdir(), 'orion-h-')), 'h'));
+
 describe('replaceInFile', () => {
   it('replaces text that matches exactly once', async () => {
     const p = await fileWith('const port = 3000;\nconsole.log(port);\n');
-    expect(await replaceInFile(p, '3000', '4000')).toContain('Replaced 1');
+    expect(await replaceInFile(p, '3000', '4000', await newHistory())).toContain('Replaced 1');
     expect(await readFile(p, 'utf8')).toBe('const port = 4000;\nconsole.log(port);\n');
   });
 
   it('refuses when the text matches more than once, and leaves the file alone', async () => {
     const original = 'const port = 3000;\nconst port = 3000;\n';
     const p = await fileWith(original);
-    expect(await replaceInFile(p, 'const port = 3000;', 'x')).toContain('matches 2 times');
+    expect(await replaceInFile(p, 'const port = 3000;', 'x', await newHistory())).toContain(
+      'matches 2 times',
+    );
     expect(await readFile(p, 'utf8')).toBe(original);
   });
 
   it('replaces all matches only when allowed', async () => {
     const p = await fileWith('a a a');
-    expect(await replaceInFile(p, 'a', 'b', true)).toContain('Replaced 3');
+    expect(await replaceInFile(p, 'a', 'b', await newHistory(), true)).toContain('Replaced 3');
     expect(await readFile(p, 'utf8')).toBe('b b b');
   });
 
   it('reports text that is not found', async () => {
     const p = await fileWith('hello');
-    expect(await replaceInFile(p, 'nope', 'x')).toContain('not found');
+    expect(await replaceInFile(p, 'nope', 'x', await newHistory())).toContain('not found');
   });
 
   it('reports a missing file', async () => {
-    expect(await replaceInFile('/nonexistent/file.txt', 'a', 'b')).toContain('does not exist');
+    expect(await replaceInFile('/nonexistent/file.txt', 'a', 'b', await newHistory())).toContain(
+      'does not exist',
+    );
+  });
+
+  it('saves the old contents so the edit can be undone', async () => {
+    const p = await fileWith('const port = 3000;\n');
+    const history = await newHistory();
+    await replaceInFile(p, '3000', '4000', history);
+
+    expect(await history.undo()).toContain('restored');
+    expect(await readFile(p, 'utf8')).toBe('const port = 3000;\n');
+  });
+
+  it('leaves no undo entry when the edit is refused', async () => {
+    const p = await fileWith('a a');
+    const history = await newHistory();
+    await replaceInFile(p, 'a', 'b', history); // matches twice, refused
+
+    expect(await history.undo()).toBe('Nothing to undo.');
   });
 });
 

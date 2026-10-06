@@ -6,7 +6,7 @@ import { buildApp } from './app';
 
 async function appInTempDir() {
   const dir = await mkdtemp(join(tmpdir(), 'orion-app-'));
-  return buildApp({ workDir: dir, outDir: join(dir, 'out') });
+  return buildApp({ workDir: dir, outDir: join(dir, 'out'), historyDir: join(dir, 'hist') });
 }
 
 describe('sandbox-runner', () => {
@@ -112,5 +112,56 @@ describe('sandbox-runner', () => {
     });
 
     expect(res.statusCode).toBe(400);
+  });
+  it('POST /write creates a file, including missing folders', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orion-app-'));
+    const app = buildApp({ workDir: dir, outDir: join(dir, 'out'), historyDir: join(dir, 'hist') });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/write',
+      payload: { path: 'src/new/health.js', content: 'export const ok = true;\n' },
+    });
+
+    expect(res.json().output).toContain('Wrote 24 characters');
+    expect(await readFile(join(dir, 'src/new/health.js'), 'utf8')).toBe(
+      'export const ok = true;\n',
+    );
+  });
+
+  it('POST /write refuses a path outside the project', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/write',
+      payload: { path: '../escape.txt', content: 'x' },
+    });
+
+    expect(res.json().output).toContain('inside the project folder');
+  });
+
+  it('POST /write rejects a missing content field with 400', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({ method: 'POST', url: '/write', payload: { path: 'a.txt' } });
+
+    expect(res.statusCode).toBe(400);
+  });
+  it('POST /undo walks back write and replace, newest first', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orion-app-'));
+    const app = buildApp({ workDir: dir, outDir: join(dir, 'out'), historyDir: join(dir, 'hist') });
+    const post = (url: string, payload?: object) => app.inject({ method: 'POST', url, payload });
+    const read = () => readFile(join(dir, 'a.txt'), 'utf8');
+
+    await post('/write', { path: 'a.txt', content: 'one' });
+    await post('/replace', { path: 'a.txt', old_str: 'one', new_str: 'two' });
+    expect(await read()).toBe('two');
+
+    expect((await post('/undo')).json().output).toContain('restored');
+    expect(await read()).toBe('one');
+
+    expect((await post('/undo')).json().output).toContain('deleted');
+    await expect(read()).rejects.toThrow();
+
+    expect((await post('/undo')).json().output).toBe('Nothing to undo.');
   });
 });

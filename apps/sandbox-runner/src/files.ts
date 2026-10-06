@@ -1,5 +1,6 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, relative, resolve, sep } from 'node:path';
+import type { History } from './history';
 import { MAX_OUTPUT } from './shell';
 
 /**
@@ -10,6 +11,7 @@ export async function replaceInFile(
   path: string,
   oldStr: string,
   newStr: string,
+  history: History,
   allowMulti = false,
 ): Promise<string> {
   let content: string;
@@ -28,6 +30,8 @@ export async function replaceInFile(
     );
   }
 
+  // Only now do we know a change will happen, so only now do we save the old contents.
+  await history.snapshot(path);
   await writeFile(path, content.split(oldStr).join(newStr));
   return `Replaced ${count} match(es) in ${path}.`;
 }
@@ -77,4 +81,24 @@ export async function readFileSlice(path: string, offset = 1, limit = 200): Prom
     text += `\n[showing lines ${offset}-${shownEnd} of ${lines.length}. Call again with offset=${shownEnd + 1} to continue.]`;
   }
   return text;
+}
+
+/**
+ * Create a file, or overwrite it. Parent folders are created as needed.
+ * The old contents are saved first so the change can be undone.
+ * Returns text for the LLM, never throws.
+ */
+export async function writeToFile(
+  path: string,
+  content: string,
+  history: History,
+): Promise<string> {
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await history.snapshot(path);
+    await writeFile(path, content);
+    return `Wrote ${content.length} characters to ${path}.`;
+  } catch (err) {
+    return `Error: could not write ${path}: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }

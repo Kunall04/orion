@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
+import { MAX_OUTPUT } from './shell';
 
 /**
  * Replace exact text in a file. By default the text must match exactly once,
@@ -41,4 +42,39 @@ export function resolveInside(root: string, requested: string): string | null {
   const rel = relative(root, full);
   if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || resolve(rel) === rel) return null;
   return full;
+}
+
+/**
+ * Read part of a file: `limit` lines starting at line `offset` (1-based).
+ * Big files come back in pieces, with a note saying how to get the next piece.
+ * Returns text for the LLM, never throws.
+ */
+export async function readFileSlice(path: string, offset = 1, limit = 200): Promise<string> {
+  let content: string;
+  try {
+    content = await readFile(path, 'utf8');
+  } catch {
+    return `Error: ${path} does not exist or is not a readable file.`;
+  }
+
+  if (content === '') return '(empty file)';
+  const lines = content.split('\n');
+  if (content.endsWith('\n')) lines.pop(); // the last newline is not an extra empty line
+  if (offset > lines.length) {
+    return `Error: offset ${offset} is past the end of the file (${lines.length} lines).`;
+  }
+
+  const end = Math.min(offset - 1 + limit, lines.length);
+  let text = lines.slice(offset - 1, end).join('\n');
+  let shownEnd = end;
+  // A minified file can have one gigantic line, so the line window alone is not enough.
+  if (text.length > MAX_OUTPUT) {
+    text = text.slice(0, MAX_OUTPUT);
+    shownEnd = offset; // only part of the first line(s) fit; ask for a smaller window
+  }
+
+  if (shownEnd < lines.length || text.length === MAX_OUTPUT) {
+    text += `\n[showing lines ${offset}-${shownEnd} of ${lines.length}. Call again with offset=${shownEnd + 1} to continue.]`;
+  }
+  return text;
 }

@@ -2,7 +2,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { replaceInFile, resolveInside } from './files';
+import { MAX_OUTPUT } from './shell';
+import { readFileSlice, replaceInFile, resolveInside } from './files';
 
 async function fileWith(content: string) {
   const path = join(await mkdtemp(join(tmpdir(), 'orion-files-')), 'a.js');
@@ -51,5 +52,46 @@ describe('resolveInside', () => {
     expect(resolveInside('/proj', 'src/../../etc/hosts')).toBeNull();
     expect(resolveInside('/proj', '/etc/hosts')).toBeNull();
     expect(resolveInside('/proj', '.')).toBeNull();
+  });
+});
+
+describe('readFileSlice', () => {
+  const numbered = (n: number) =>
+    Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+
+  it('returns a small file whole, with no note', async () => {
+    const p = await fileWith('a\nb\n');
+    expect(await readFileSlice(p)).toBe('a\nb');
+  });
+
+  it('returns only the requested slice and says how to continue', async () => {
+    const p = await fileWith(numbered(10));
+    const out = await readFileSlice(p, 3, 2);
+    expect(out).toContain('line 3\nline 4');
+    expect(out).not.toContain('line 5');
+    expect(out).toContain('showing lines 3-4 of 10');
+    expect(out).toContain('offset=5');
+  });
+
+  it('gives no note when the slice reaches the end', async () => {
+    const p = await fileWith(numbered(5));
+    expect(await readFileSlice(p, 4, 10)).toBe('line 4\nline 5');
+  });
+
+  it('reports an offset past the end', async () => {
+    const p = await fileWith(numbered(3));
+    expect(await readFileSlice(p, 99)).toContain('past the end');
+  });
+
+  it('caps one gigantic line', async () => {
+    const p = await fileWith('x'.repeat(MAX_OUTPUT * 3));
+    const out = await readFileSlice(p);
+    expect(out.length).toBeLessThan(MAX_OUTPUT + 200);
+    expect(out).toContain('showing lines');
+  });
+
+  it('handles an empty file and a missing file', async () => {
+    expect(await readFileSlice(await fileWith(''))).toBe('(empty file)');
+    expect(await readFileSlice('/nonexistent/x.txt')).toContain('does not exist');
   });
 });

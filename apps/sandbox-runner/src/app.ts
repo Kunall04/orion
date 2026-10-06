@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { replaceInFile, resolveInside } from './files';
+import { readFileSlice, replaceInFile, resolveInside } from './files';
 import { runCommand } from './shell';
 
 export interface SandboxOptions {
@@ -16,7 +16,8 @@ export interface SandboxOptions {
  *   GET  /health
  *   POST /command   -> run one shell command, return its output as text
  *   POST /replace   -> replace exact text in a file (must match once)
- * Next: read/write/undo.
+ *   POST /read      -> read a file, or a slice of it
+ * Next: write/undo.
  */
 export function buildApp(options: SandboxOptions = {}): FastifyInstance {
   const workDir = options.workDir ?? process.cwd();
@@ -70,6 +71,29 @@ export function buildApp(options: SandboxOptions = {}): FastifyInstance {
       const full = resolveInside(workDir, path);
       if (!full) return { output: 'Error: path must be a file inside the project folder.' };
       return { output: await replaceInFile(full, old_str, new_str, allow_multi) };
+    },
+  );
+
+  app.post<{ Body: { path: string; offset?: number; limit?: number } }>(
+    '/read',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['path'],
+          properties: {
+            path: { type: 'string', minLength: 1 },
+            offset: { type: 'integer', minimum: 1 },
+            limit: { type: 'integer', minimum: 1, maximum: 2000 },
+          },
+        },
+      },
+    },
+    async (req) => {
+      const { path, offset, limit } = req.body;
+      const full = resolveInside(workDir, path);
+      if (!full) return { output: 'Error: path must be a file inside the project folder.' };
+      return { output: await readFileSlice(full, offset, limit) };
     },
   );
 

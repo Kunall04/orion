@@ -81,4 +81,36 @@ describe('sandbox-runner', () => {
 
     expect(res.statusCode).toBe(400);
   });
+  it('POST /read returns a slice of a file inside the project', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orion-app-'));
+    await writeFile(join(dir, 'a.txt'), 'one\ntwo\nthree\n');
+    const app = buildApp({ workDir: dir, outDir: join(dir, 'out') });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/read',
+      payload: { path: 'a.txt', offset: 2, limit: 1 },
+    });
+
+    expect(res.json().output).toContain('two');
+    expect(res.json().output).not.toContain('three\n');
+  });
+
+  it('POST /read refuses a path outside the project', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({ method: 'POST', url: '/read', payload: { path: '/etc/hosts' } });
+
+    expect(res.json().output).toContain('inside the project folder');
+  });
+
+  it('POST /read rejects a bad offset with 400', async () => {
+    const app = await appInTempDir();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/read',
+      payload: { path: 'a', offset: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
 });

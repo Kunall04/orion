@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createAppJwt, mintInstallationToken } from './auth';
+import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './auth';
 
 describe('GitHub Auth', () => {
   let privateKey: string;
@@ -104,6 +107,36 @@ describe('GitHub Auth', () => {
       await expect(
         mintInstallationToken(installationId, 'invalid.jwt', { fetch: mockFetch }),
       ).rejects.toThrow('Failed to mint installation token (HTTP 401)');
+    });
+  });
+
+  describe('loadGitHubPrivateKey', () => {
+    it('returns direct GITHUB_PRIVATE_KEY when present', () => {
+      const result = loadGitHubPrivateKey({
+        GITHUB_PRIVATE_KEY: 'test-key',
+      });
+      expect(result).toBe('test-key');
+    });
+
+    it('reads from file path when GITHUB_PRIVATE_KEY_PATH is provided', () => {
+      const tmpFile = path.join(os.tmpdir(), `test-key-${Date.now()}.pem`);
+      fs.writeFileSync(tmpFile, 'pem-file-contents');
+
+      try {
+        const result = loadGitHubPrivateKey({
+          GITHUB_PRIVATE_KEY_PATH: tmpFile,
+        });
+        expect(result).toBe('pem-file-contents');
+      } finally {
+        fs.unlinkSync(tmpFile);
+      }
+    });
+
+    it('returns undefined when neither is set or file does not exist', () => {
+      expect(loadGitHubPrivateKey({})).toBeUndefined();
+      expect(
+        loadGitHubPrivateKey({ GITHUB_PRIVATE_KEY_PATH: '/non/existent/path.pem' }),
+      ).toBeUndefined();
     });
   });
 });

@@ -11,6 +11,37 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Loads the GitHub App private key from GITHUB_PRIVATE_KEY or from
+ * a file path specified in GITHUB_PRIVATE_KEY_PATH.
+ */
+export function loadGitHubPrivateKey(
+  env: Record<string, string | undefined> = process.env,
+  baseDir: string = process.cwd(),
+): string | undefined {
+  if (env.GITHUB_PRIVATE_KEY) {
+    return env.GITHUB_PRIVATE_KEY;
+  }
+  if (env.GITHUB_PRIVATE_KEY_PATH) {
+    const candidates = [
+      path.isAbsolute(env.GITHUB_PRIVATE_KEY_PATH)
+        ? env.GITHUB_PRIVATE_KEY_PATH
+        : path.resolve(baseDir, env.GITHUB_PRIVATE_KEY_PATH),
+      path.resolve(baseDir, 'apps/backend', env.GITHUB_PRIVATE_KEY_PATH),
+      path.resolve(__dirname, '..', '..', env.GITHUB_PRIVATE_KEY_PATH),
+    ];
+
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        return fs.readFileSync(cand, 'utf8');
+      }
+    }
+  }
+  return undefined;
+}
 
 export interface MintTokenOptions {
   /** Optional custom fetch implementation (useful for tests or mocking) */

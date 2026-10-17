@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { TaskStatus } from '@cloud-agent/shared';
-import { createAppJwt, mintInstallationToken } from './github/auth';
+import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './github/auth';
 import { listInstallationRepos } from './github/repos';
 
 export interface InstallationRecord {
@@ -119,12 +119,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     async (req, reply) => {
       const { id } = req.params;
       const appId = options.githubAppId ?? process.env.GITHUB_APP_ID;
-      const privateKey = options.githubPrivateKey ?? process.env.GITHUB_PRIVATE_KEY;
+      const privateKey = options.githubPrivateKey ?? loadGitHubPrivateKey();
 
       if (!appId || !privateKey) {
         return reply.status(500).send({
           ok: false,
-          error: 'GitHub App credentials (GITHUB_APP_ID / GITHUB_PRIVATE_KEY) not configured',
+          error:
+            'GitHub App credentials (GITHUB_APP_ID / GITHUB_PRIVATE_KEY or GITHUB_PRIVATE_KEY_PATH) not configured',
         });
       }
 

@@ -1,6 +1,8 @@
 import { buildApp } from './app';
 
-const app = buildApp();
+const app = buildApp({
+  workDir: process.env.WORKSPACE_DIR,
+});
 const port = Number(process.env.PORT ?? 5000);
 
 app.listen({ port, host: process.env.HOST ?? '127.0.0.1' }, (err) => {

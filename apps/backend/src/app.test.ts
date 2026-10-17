@@ -40,4 +40,42 @@ describe('backend', () => {
 
     expect(res.statusCode).toBe(400);
   });
+
+  describe('GitHub App routes', () => {
+    it('GET /api/github/callback stores the installation_id and returns success', async () => {
+      const app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/github/callback?installation_id=987654&setup_action=install',
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        ok: true,
+        installationId: '987654',
+        message: 'GitHub App installed successfully',
+      });
+
+      // Verify it shows up in /api/github/installations
+      const listRes = await app.inject({ method: 'GET', url: '/api/github/installations' });
+      expect(listRes.statusCode).toBe(200);
+      const data = listRes.json();
+      expect(data.ok).toBe(true);
+      expect(data.installations).toHaveLength(1);
+      expect(data.installations[0].installationId).toBe('987654');
+      expect(data.installations[0].setupAction).toBe('install');
+    });
+
+    it('GET /api/github/callback rejects missing installation_id with 400', async () => {
+      const app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/github/callback',
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+  });
 });

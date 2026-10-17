@@ -44,6 +44,7 @@ export const TOOL_NAMES = [
   'update_file',
   'delete_file',
   'undo',
+  'create_pull_request',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];

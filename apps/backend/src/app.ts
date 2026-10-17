@@ -1,5 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { TaskStatus } from '@cloud-agent/shared';
+import { createAppJwt, mintInstallationToken } from './github/auth';
+import { listInstallationRepos } from './github/repos';
 
 export interface InstallationRecord {
   installationId: string;
@@ -10,6 +12,14 @@ export interface InstallationRecord {
 export interface BackendAppOptions {
   /** Optional store for installations (defaults to in-memory Map) */
   installations?: Map<string, InstallationRecord>;
+  /** GitHub App ID */
+  githubAppId?: string;
+  /** GitHub App Private Key (PEM format) */
+  githubPrivateKey?: string;
+  /** Custom fetch implementation for testing */
+  fetch?: typeof fetch;
+  /** GitHub API base URL (defaults to https://api.github.com) */
+  githubBaseUrl?: string;
 }
 
 /**
@@ -89,6 +99,61 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       installations: Array.from(installations.values()),
     };
   });
+
+  /**
+   * List repositories accessible to a specific GitHub App installation.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/api/github/installations/:id/repos',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params;
+      const appId = options.githubAppId ?? process.env.GITHUB_APP_ID;
+      const privateKey = options.githubPrivateKey ?? process.env.GITHUB_PRIVATE_KEY;
+
+      if (!appId || !privateKey) {
+        return reply.status(500).send({
+          ok: false,
+          error: 'GitHub App credentials (GITHUB_APP_ID / GITHUB_PRIVATE_KEY) not configured',
+        });
+      }
+
+      try {
+        const jwt = createAppJwt(appId, privateKey);
+        const tokenRes = await mintInstallationToken(id, jwt, {
+          fetch: options.fetch,
+          baseUrl: options.githubBaseUrl,
+        });
+
+        const repos = await listInstallationRepos(tokenRes.token, {
+          fetch: options.fetch,
+          baseUrl: options.githubBaseUrl,
+        });
+
+        return {
+          ok: true,
+          installationId: id,
+          repositories: repos,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.status(502).send({
+          ok: false,
+          error: message,
+        });
+      }
+    },
+  );
 
   return app;
 }

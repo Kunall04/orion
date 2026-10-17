@@ -77,5 +77,109 @@ describe('backend', () => {
 
       expect(res.statusCode).toBe(400);
     });
+
+    it('GET /api/github/installations/:id/repos returns 500 when credentials are not configured', async () => {
+      const app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/github/installations/987654/repos',
+      });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json().error).toContain('GitHub App credentials');
+    });
+
+    it('GET /api/github/installations/:id/repos mints token and lists repositories', async () => {
+      const crypto = await import('node:crypto');
+      const { privateKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+
+      const mockFetch: typeof fetch = async (url) => {
+        const urlStr = String(url);
+        if (urlStr.includes('/access_tokens')) {
+          return new Response(
+            JSON.stringify({
+              token: 'ghs_mockToken123',
+              expires_at: '2026-10-17T22:00:00Z',
+            }),
+            { status: 201, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (urlStr.includes('/installation/repositories')) {
+          return new Response(
+            JSON.stringify({
+              total_count: 1,
+              repositories: [
+                {
+                  id: 42,
+                  name: 'portfolio-site',
+                  full_name: 'testdev/portfolio-site',
+                  private: false,
+                  html_url: 'https://github.com/testdev/portfolio-site',
+                  clone_url: 'https://github.com/testdev/portfolio-site.git',
+                  default_branch: 'main',
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      };
+
+      const app = buildApp({
+        githubAppId: '123456',
+        githubPrivateKey: privateKey,
+        fetch: mockFetch,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/github/installations/987654/repos',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.installationId).toBe('987654');
+      expect(data.repositories).toHaveLength(1);
+      expect(data.repositories[0].name).toBe('portfolio-site');
+      expect(data.repositories[0].fullName).toBe('testdev/portfolio-site');
+    });
+
+    it('GET /api/github/installations/:id/repos returns 502 when GitHub returns an error', async () => {
+      const crypto = await import('node:crypto');
+      const { privateKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+
+      const mockFetch: typeof fetch = async () => {
+        return new Response(JSON.stringify({ message: 'Installation not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const app = buildApp({
+        githubAppId: '123456',
+        githubPrivateKey: privateKey,
+        fetch: mockFetch,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/github/installations/unknown-id/repos',
+      });
+
+      expect(res.statusCode).toBe(502);
+      expect(res.json().ok).toBe(false);
+      expect(res.json().error).toContain('Failed to mint installation token (HTTP 404)');
+    });
   });
 });

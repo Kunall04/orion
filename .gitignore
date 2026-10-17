@@ -18,3 +18,8 @@ npm-debug.log*
 # OS
 .DS_Store
 .freebuff/
+
+# Internal logs and planning docs
+HANDOFF.md
+LEARNING_LOG.md
+BUILD_PLAN.md

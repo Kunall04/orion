@@ -30,6 +30,10 @@ export interface ListReposOptions {
 export interface CloneRepoOptions {
   /** Target directory inside sandbox workspace (defaults to current dir '.') */
   targetDir?: string;
+  /** Git commit author name (defaults to 'Orion Agent') */
+  gitAuthorName?: string;
+  /** Git commit author email (defaults to GitHub App bot email if configured, or 'agent@orion.dev') */
+  gitAuthorEmail?: string;
 }
 
 export interface CloneRepoResult {
@@ -107,8 +111,18 @@ export async function cloneRepoToSandbox(
   }
 
   // Configure commit author details so the agent can commit cleanly
-  await sandbox.runCommand('git config user.name "Orion Agent"');
-  await sandbox.runCommand('git config user.email "agent@orion.dev"');
+  const authorName = options.gitAuthorName ?? process.env.GIT_AUTHOR_NAME ?? 'Orion Agent';
+  const botId = process.env.GITHUB_BOT_USER_ID ?? '344046298';
+  const botSlug = process.env.GITHUB_APP_SLUG ?? 'orion-coding-agent';
+  const authorEmail =
+    options.gitAuthorEmail ??
+    process.env.GIT_AUTHOR_EMAIL ??
+    (process.env.GITHUB_APP_ID
+      ? `${botId}+${botSlug}[bot]@users.noreply.github.com`
+      : 'agent@orion.dev');
+
+  await sandbox.runCommand(`git config user.name "${authorName}"`);
+  await sandbox.runCommand(`git config user.email "${authorEmail}"`);
 
   return { success: true, output };
 }

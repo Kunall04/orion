@@ -2,6 +2,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { TaskStatus } from '@cloud-agent/shared';
 import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './github/auth';
 import { listInstallationRepos } from './github/repos';
+import { executeTask } from './agent/task-runner';
+import type { AgentEvent } from './agent/loop';
 
 export interface InstallationRecord {
   installationId: string;
@@ -9,9 +11,22 @@ export interface InstallationRecord {
   setupAction?: string;
 }
 
+export interface TaskRecord {
+  id: string;
+  instruction: string;
+  repo?: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  events: AgentEvent[];
+  result?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface BackendAppOptions {
   /** Optional store for installations (defaults to in-memory Map) */
   installations?: Map<string, InstallationRecord>;
+  /** Optional store for tasks (defaults to in-memory Map) */
+  tasks?: Map<string, TaskRecord>;
   /** GitHub App ID */
   githubAppId?: string;
   /** GitHub App Private Key (PEM format) */
@@ -20,6 +35,8 @@ export interface BackendAppOptions {
   fetch?: typeof fetch;
   /** GitHub API base URL (defaults to https://api.github.com) */
   githubBaseUrl?: string;
+  /** Auto-execute tasks in background (defaults to true) */
+  autoExecuteTasks?: boolean;
 }
 
 /**
@@ -28,7 +45,21 @@ export interface BackendAppOptions {
  */
 export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   const installations = options.installations ?? new Map<string, InstallationRecord>();
+  const tasks = options.tasks ?? new Map<string, TaskRecord>();
+  const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
+  const autoExecute = options.autoExecuteTasks ?? true;
+
   const app = Fastify({ logger: false });
+
+  // CORS support
+  app.addHook('onRequest', async (req, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-task-id');
+    if (req.method === 'OPTIONS') {
+      return reply.status(200).send();
+    }
+  });
 
   app.get('/health', async () => {
     const status: TaskStatus = 'running';
@@ -39,20 +70,149 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     return { pong: true };
   });
 
-  app.post<{ Body: { instruction: string } }>(
+  /**
+   * List all tasks
+   */
+  app.get('/tasks', async () => {
+    return {
+      ok: true,
+      tasks: Array.from(tasks.values()).sort((a, b) => b.createdAt - a.createdAt),
+    };
+  });
+
+  /**
+   * Get single task
+   */
+  app.get<{ Params: { id: string } }>('/tasks/:id', async (req, reply) => {
+    const task = tasks.get(req.params.id);
+    if (!task) {
+      return reply.status(404).send({ ok: false, error: 'Task not found' });
+    }
+    return { ok: true, task };
+  });
+
+  /**
+   * Server-Sent Events stream for live task progress
+   */
+  app.get<{ Params: { id: string } }>('/tasks/:id/events', async (req, reply) => {
+    const { id } = req.params;
+    const task = tasks.get(id);
+    if (!task) {
+      return reply.status(404).send({ ok: false, error: 'Task not found' });
+    }
+
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.setHeader('Access-Control-Allow-Origin', '*');
+    reply.raw.flushHeaders();
+
+    // Send existing accumulated events first
+    for (const evt of task.events) {
+      reply.raw.write(`data: ${JSON.stringify(evt)}\n\n`);
+    }
+
+    if (task.status === 'completed' || task.status === 'failed') {
+      reply.raw.write(`data: ${JSON.stringify({ type: 'done', status: task.status, result: task.result })}\n\n`);
+      reply.raw.end();
+      return;
+    }
+
+    // Register listener for new live events
+    if (!eventListeners.has(id)) {
+      eventListeners.set(id, new Set());
+    }
+    const listeners = eventListeners.get(id)!;
+
+    const listener = (event: AgentEvent) => {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    listeners.add(listener);
+
+    req.raw.on('close', () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        eventListeners.delete(id);
+      }
+    });
+  });
+
+  /**
+   * Create new agent task
+   */
+  app.post<{ Body: { instruction: string; repo?: string } }>(
     '/tasks',
     {
       schema: {
         body: {
           type: 'object',
           required: ['instruction'],
-          properties: { instruction: { type: 'string', minLength: 1 } },
+          properties: {
+            instruction: { type: 'string', minLength: 1 },
+            repo: { type: 'string' },
+          },
         },
       },
     },
     async (req) => {
-      const { instruction } = req.body;
-      return { ok: true, got: instruction };
+      const { instruction, repo } = req.body;
+      const id = `task-${Date.now()}`;
+      const record: TaskRecord = {
+        id,
+        instruction,
+        repo: repo ?? 'Kunall04/agent-checkout-gate',
+        status: 'running',
+        events: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      tasks.set(id, record);
+
+      if (autoExecute) {
+        // Run agent in background and stream events
+        executeTask({
+          id,
+          instruction,
+          repo: record.repo,
+          onEvent: (event) => {
+            record.events.push(event);
+            record.updatedAt = Date.now();
+            const listeners = eventListeners.get(id);
+            if (listeners) {
+              for (const l of listeners) {
+                try {
+                  l(event);
+                } catch {}
+              }
+            }
+          },
+        })
+          .then((result) => {
+            record.status = 'completed';
+            record.result = result;
+            record.updatedAt = Date.now();
+            const listeners = eventListeners.get(id);
+            if (listeners) {
+              for (const l of listeners) {
+                try {
+                  l({ type: 'message', content: result });
+                } catch {}
+              }
+            }
+          })
+          .catch((err) => {
+            record.status = 'failed';
+            record.result = err instanceof Error ? err.message : String(err);
+            record.updatedAt = Date.now();
+          });
+      }
+
+      return {
+        ok: true,
+        got: instruction,
+        id,
+        task: record,
+      };
     },
   );
 

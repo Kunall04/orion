@@ -31,7 +31,9 @@ describe('backend', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, got: 'fix typo' });
+    expect(res.json()).toMatchObject({ ok: true, got: 'fix typo' });
+    expect(res.json().id).toBeDefined();
+    expect(res.json().task).toBeDefined();
   });
 
   it('POST /tasks rejects an empty body', async () => {

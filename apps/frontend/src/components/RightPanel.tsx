@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CodeDiffViewer from './CodeDiffViewer';
 import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
@@ -76,28 +76,123 @@ function PRView() {
   );
 }
 
-export default function RightPanel() {
+export default function RightPanel({
+  initialWidth = 380,
+  minWidth = 280,
+  maxWidth = 720,
+}: {
+  initialWidth?: number;
+  minWidth?: number;
+  maxWidth?: number;
+}) {
   const [tab, setTab] = useState<PanelTab>('Changes');
+  const [width, setWidth] = useState(initialWidth);
+  const [isResizing, setIsResizing] = useState(false);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(initialWidth);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWidthRef.current = width;
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      const delta = startXRef.current - moveEvent.clientX;
+      const maxAllowed = Math.min(maxWidth, Math.floor(window.innerWidth * 0.65));
+      const nextWidth = Math.max(minWidth, Math.min(startWidthRef.current + delta, maxAllowed));
+      setWidth(nextWidth);
+    };
+
+    const onPointerUp = () => {
+      isDraggingRef.current = false;
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const handleDoubleClick = () => {
+    // Toggle between default compact (360px) and wide view (580px)
+    setWidth((prev) => (prev > 450 ? 360 : 580));
+  };
 
   return (
-    <aside className="flex h-full w-[350px] shrink-0 flex-col border-l border-line bg-canvas">
+    <aside
+      style={{ width }}
+      className="relative flex h-full shrink-0 flex-col border-l border-line bg-canvas"
+    >
+      {/* Draggable resize handle on the left border */}
+      <div
+        onPointerDown={startResize}
+        onDoubleClick={handleDoubleClick}
+        title="Drag to resize panel (Double-click to toggle width)"
+        className={`group absolute -left-1.5 top-0 bottom-0 z-20 w-3 cursor-col-resize select-none flex items-center justify-center transition-colors ${
+          isResizing ? 'bg-accent/20' : 'hover:bg-accent/15'
+        }`}
+      >
+        {/* Subtle pill grip handle indicator */}
+        <div
+          className={`h-8 w-1 rounded-full transition-all ${
+            isResizing ? 'bg-accent scale-y-125' : 'bg-line-strong group-hover:bg-accent group-hover:h-10'
+          }`}
+        />
+      </div>
+
       {/* Tab bar */}
-      <div className="flex h-[52px] shrink-0 items-center gap-1 border-b border-line px-3">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12.5px] font-medium transition-colors duration-100 ${
-              tab === t
-                ? 'bg-surface text-ink shadow-btn'
-                : 'text-ink-3 hover:bg-hover hover:text-ink-2'
-            }`}
+      <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-3">
+        <div className="flex items-center gap-1">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12.5px] font-medium transition-colors duration-100 ${
+                tab === t
+                  ? 'bg-surface text-ink shadow-btn'
+                  : 'text-ink-3 hover:bg-hover hover:text-ink-2'
+              }`}
+            >
+              <span className={tab === t ? 'text-ink' : 'text-ink-3'}>{TAB_ICONS[t]}</span>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Width toggle button */}
+        <button
+          type="button"
+          onClick={handleDoubleClick}
+          title={width > 450 ? 'Compact panel' : 'Expand panel'}
+          className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <span className={tab === t ? 'text-ink' : 'text-ink-3'}>{TAB_ICONS[t]}</span>
-            {t}
-          </button>
-        ))}
+            {width > 450 ? (
+              <polyline points="4 14 10 14 10 20M20 10 14 10 14 4" />
+            ) : (
+              <polyline points="15 3 21 3 21 9M9 21 3 21 3 15" />
+            )}
+          </svg>
+        </button>
       </div>
 
       {/* Tab content */}

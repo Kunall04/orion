@@ -14,31 +14,53 @@ export interface ThinkingData {
   rows?: Array<{ primary: string; secondary?: string; mono?: boolean }>;
 }
 
+export interface ActionCardData {
+  title: string;
+  pr: string;
+  diff?: string;
+  bot?: string;
+}
+
+export interface ActionPillData {
+  label: string;
+  tag?: string;
+}
+
 export interface ChatMsg {
   id: string;
   role: 'user' | 'agent';
   text?: string;
+  repo?: string;
   thinking?: ThinkingData;
   toolSteps?: ToolStep[];
   diffs?: ToolDiff[];
+  actionCard?: ActionCardData;
+  actionPill?: ActionPillData;
+  actionRequiredBanner?: string;
 }
 
 export interface SessionData extends SessionItem {
+  repo?: string;
   feed: ChatMsg[];
 }
 
-/* ─── Initial Sessions ───────────────────────────────────── */
+/* ─── Initial Sessions (Matching Reference Image 2) ───────── */
 const INITIAL_SESSIONS: SessionData[] = [
   {
     id: 's1',
     title: 'Fix checkout rate-limit test',
+    subtitle: 'Review PR',
     pr: '#142',
+    prCount: 1,
     status: 'done',
+    statusColor: 'orange',
     time: '2m ago',
+    repo: 'Kunall04/agent-checkout-gate',
     feed: [
       {
         id: 'msg-1',
         role: 'user',
+        repo: 'Kunall04/agent-checkout-gate',
         text: 'Fix the checkout rate-limit test and open a PR with bot commit attribution.',
       },
       {
@@ -73,90 +95,137 @@ const INITIAL_SESSIONS: SessionData[] = [
           {
             icon: 'run',
             label: 'Push branch',
-            chip: 'git push origin orion/fix-test',
+            chip: 'git push origin orion/fix-rate-limit',
             mono: true,
             detailMono: true,
-            detail: [{ text: 'Branch orion/fix-test pushed to GitHub' }],
+            detail: [{ text: 'Branch orion/fix-rate-limit pushed to GitHub' }],
           },
         ],
         diffs: [{ file: 'ORION_VERIFICATION.md', add: 12, del: 0 }],
-        text: 'Done. I cloned Kunall04/agent-checkout-gate, reproduced the failing test, applied the fix, committed with bot attribution (344046298+orion-coding-agent[bot]), and opened PR #142 against main.',
+        actionCard: {
+          title: 'Fix checkout rate-limit test',
+          pr: 'agent-checkout-gate#142',
+          diff: '+14 -2',
+          bot: 'orion-coding-agent[bot]',
+        },
+        text: 'Done. I reproduced the failing rate limit test in the sandbox, updated tasks.test.ts, verified 34/34 passing checks, committed with bot attribution (344046298+orion-coding-agent[bot]), and opened PR #142 against main.',
+        actionPill: {
+          label: 'Run sandbox checks',
+          tag: 'Verified',
+        },
+        actionRequiredBanner: 'Action required: Review PR',
       },
     ],
   },
   {
     id: 's2',
-    title: 'Add OpenTelemetry tracing',
-    pr: '#138',
+    title: 'Make background black',
+    subtitle: 'Review PR',
+    pr: '#2',
+    prCount: 1,
     status: 'done',
+    statusColor: 'orange',
     time: '1h ago',
+    repo: 'fpbird/fpbird.github.io',
     feed: [
       {
         id: 'msg-s2-1',
         role: 'user',
-        text: 'Add OpenTelemetry distributed tracing to Fastify routes.',
+        repo: 'fpbird/fpbird.github.io',
+        text: 'fpbird/fpbird.github.io make background black',
       },
       {
         id: 'msg-s2-2',
         role: 'agent',
         thinking: {
-          done: 'Thought for 2 seconds',
+          done: 'Thought for 6s',
           rows: [
-            { primary: 'Reviewing Fastify plugin architecture', mono: true },
-            { primary: 'Adding trace context propagators', mono: true },
+            { primary: 'Scanning workspace css/airspace.css' },
+            { primary: 'Locating body background styling rule' },
           ],
         },
+        text: 'On it — making the site background black. Will find the relevant CSS/style and update it.',
         toolSteps: [
           {
-            icon: 'write',
-            label: 'Install OTel',
-            chip: 'src/telemetry.ts',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: '+ added OpenTelemetry SDK initialization', tone: 'add' }],
-          },
-          {
             icon: 'run',
-            label: 'Verify tests',
-            chip: 'npm test',
+            label: 'Worked for 37s',
+            chip: '+1 file',
             mono: true,
             detailMono: true,
-            detail: [{ text: '✓ 34 tests passed' }],
+            detail: [{ text: 'Updated css/airspace.css: background-color: #000000' }],
           },
         ],
-        diffs: [{ file: 'src/telemetry.ts', add: 28, del: 0 }],
-        text: 'Configured OpenTelemetry SDK with automatic trace context propagation on HTTP requests. All checks passing.',
+        actionCard: {
+          title: 'Make page background black',
+          pr: 'fpbird.github.io#2',
+          diff: '+1 -0',
+          bot: 'orion-coding-agent[bot]',
+        },
+      },
+      {
+        id: 'msg-s2-3',
+        role: 'agent',
+        thinking: {
+          done: 'Thought for 5s',
+          rows: [
+            { primary: 'Building Jekyll site preview' },
+            { primary: 'Rendering background color verification' },
+          ],
+        },
+        text: `Done — set the site background to black in css/airspace.css and opened fpbird.github.io#2 (Orion Review)\n\nWant me to test it by building the Jekyll site and confirming the black background renders? I can record myself doing it.`,
+        actionPill: {
+          label: 'Test the site',
+          tag: 'Beta',
+        },
+        actionRequiredBanner: 'Action required: Review PR',
       },
     ],
   },
   {
     id: 's3',
-    title: 'Migrate tests to Vitest',
-    pr: '#135',
+    title: 'Make school-cms background black',
+    subtitle: 'Test black background',
+    pr: '#1',
+    prCount: 1,
     status: 'done',
-    time: '3h ago',
-    feed: [
-      {
-        id: 'msg-s3-1',
-        role: 'user',
-        text: 'Migrate test suite to Vitest.',
-      },
-      {
-        id: 'msg-s3-2',
-        role: 'agent',
-        toolSteps: [
-          {
-            icon: 'run',
-            label: 'Run vitest',
-            chip: 'vitest run',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: '57 passed in 890ms' }],
-          },
-        ],
-        text: 'Vitest configured across all monorepo workspaces. All 57 tests passing in 890ms.',
-      },
-    ],
+    statusColor: 'orange',
+    time: '1d ago',
+    repo: 'school-cms',
+    feed: [],
+  },
+  {
+    id: 's4',
+    title: 'Change fpbird.github.io background',
+    subtitle: 'Send next task',
+    pr: '#1',
+    prCount: 1,
+    status: 'done',
+    statusColor: 'orange',
+    time: '2d ago',
+    repo: 'fpbird/fpbird.github.io',
+    feed: [],
+  },
+  {
+    id: 's5',
+    title: 'Change background to black',
+    subtitle: 'PR is ready',
+    pr: '#1',
+    prCount: 1,
+    status: 'done',
+    statusColor: 'green',
+    time: '4d ago',
+    repo: 'fpbird',
+    feed: [],
+  },
+  {
+    id: 's6',
+    title: 'Review codes30/course-app#14',
+    subtitle: '11 days ago',
+    status: 'done',
+    statusColor: 'gray',
+    time: '11d ago',
+    repo: 'codes30/course-app',
+    feed: [],
   },
 ];
 
@@ -166,8 +235,8 @@ const STARTER_PROMPTS = [
     sub: 'Reproduce failing test in sandbox and patch assertion',
   },
   {
-    title: 'Run test suite and verify',
-    sub: 'Execute full Vitest workspace checks in sandbox',
+    title: 'Make site background black',
+    sub: 'Update theme stylesheet and test Jekyll site rendering',
   },
   {
     title: 'Add healthcheck probe',
@@ -176,11 +245,20 @@ const STARTER_PROMPTS = [
 ];
 
 /* ─── Individual message bubbles ─────────────────────────── */
-function UserBubble({ text }: { text: string }) {
+function UserBubble({ text, repo }: { text: string; repo?: string }) {
   return (
     <div className="flex justify-end pl-12" style={{ animation: 'fade-up 350ms cubic-bezier(0.23,1,0.32,1) both' }}>
-      <div className="max-w-[340px] rounded-xl bg-field px-3.5 py-2.5 text-[13px] leading-relaxed text-ink shadow-hairline">
-        {text}
+      <div className="flex max-w-[420px] flex-col gap-1.5 rounded-xl border border-line bg-surface p-3 text-[13px] leading-relaxed text-ink shadow-btn">
+        {repo && (
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-accent">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+              <path d="M9 18c-4.51 2-5-2-7-2" />
+            </svg>
+            <span className="truncate">{repo}</span>
+          </div>
+        )}
+        <p>{text}</p>
       </div>
     </div>
   );
@@ -190,8 +268,8 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
   return (
     <div className="flex items-start gap-2.5" style={{ animation: 'fade-up 350ms cubic-bezier(0.23,1,0.32,1) both' }}>
       <OrionLogo size={20} badge className="mt-0.5 shrink-0" />
-      <div className="flex min-w-0 max-w-[520px] flex-col gap-2">
-        {/* Thinking row (only when thinking exists) */}
+      <div className="flex min-w-0 max-w-[540px] flex-1 flex-col gap-2.5">
+        {/* Thinking row */}
         {msg.thinking && (
           <ThinkingState
             key={msg.id + '-think'}
@@ -202,9 +280,47 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
           />
         )}
 
-        {/* Real tool chips (only when tools were invoked) */}
+        {/* Real tool chips */}
         {msg.toolSteps && msg.toolSteps.length > 0 && (
           <ToolChips steps={msg.toolSteps} diffs={msg.diffs || []} />
+        )}
+
+        {/* Action PR Card (Image 2) */}
+        {msg.actionCard && (
+          <div className="flex flex-col gap-2 rounded-window border border-line bg-surface p-3 shadow-btn">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="truncate text-[13px] font-semibold text-ink">
+                  {msg.actionCard.title}
+                </span>
+                <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green shrink-0">
+                    <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
+                  </svg>
+                  <span className="text-accent">{msg.actionCard.pr}</span>
+                  {msg.actionCard.diff && <span className="text-green font-semibold">{msg.actionCard.diff}</span>}
+                  <span>•</span>
+                  <span className="truncate">{msg.actionCard.bot || 'orion-coding-agent[bot]'}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  className="flex items-center gap-1 rounded-control bg-field px-2.5 py-1 text-[11.5px] font-medium text-ink hover:bg-hover transition-colors shadow-hairline"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                  Review with Orion
+                </button>
+                <button
+                  type="button"
+                  className="rounded-control bg-accent px-3 py-1 text-[11.5px] font-medium text-white hover:bg-accent/90 transition-colors shadow-btn"
+                >
+                  Analyze
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Agent message text */}
@@ -212,6 +328,34 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
           <p className="pt-0.5 text-[13px] leading-relaxed text-ink whitespace-pre-wrap">
             {msg.text}
           </p>
+        )}
+
+        {/* Action Pill (Image 2: [Test the site ∨] Beta) */}
+        {msg.actionPill && (
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-1.5 text-[12px] font-medium text-ink shadow-btn hover:bg-hover transition-colors"
+            >
+              <span>{msg.actionPill.label}</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {msg.actionPill.tag && (
+              <span className="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent">
+                {msg.actionPill.tag}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Action Required Banner (Image 2: ● Action required: Review PR) */}
+        {msg.actionRequiredBanner && (
+          <div className="flex items-center gap-2 pt-1 font-mono text-[11.5px] text-amber-500 font-medium">
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>{msg.actionRequiredBanner}</span>
+          </div>
         )}
       </div>
     </div>
@@ -582,7 +726,7 @@ export default function App() {
           ) : (
             <div className="mx-auto flex max-w-[600px] flex-col gap-5 px-4 py-6">
               {activeSession.feed.map((msg) => {
-                if (msg.role === 'user') return <UserBubble key={msg.id} text={msg.text!} />;
+                if (msg.role === 'user') return <UserBubble key={msg.id} text={msg.text!} repo={msg.repo} />;
                 if (msg.role === 'agent') return <AgentTurnBubble key={msg.id} msg={msg} />;
                 return null;
               })}

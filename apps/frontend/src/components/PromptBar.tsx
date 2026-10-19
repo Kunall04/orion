@@ -39,7 +39,7 @@ export default function PromptBar({
             send();
           }
         }}
-        placeholder="Ask Orion to fix a bug, write tests, or open a PR…"
+        placeholder="Ask Orion to build features, fix bugs, or work on your code"
         disabled={disabled}
         className="min-h-[44px] w-full resize-none bg-transparent px-3.5 pt-3 text-[13.5px] leading-snug text-ink outline-none placeholder:text-ink-3 disabled:opacity-40"
       />

@@ -5,40 +5,88 @@ import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
 import ApprovalCard from './ApprovalCard';
 
-type PanelTab = 'IDE' | 'Changes' | 'PR' | 'Terminal' | 'Files';
+type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor';
 
-const TABS: PanelTab[] = ['IDE', 'Changes', 'PR', 'Terminal', 'Files'];
+const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor'];
 
-const TAB_ICONS: Record<PanelTab, React.ReactNode> = {
-  IDE: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="18" rx="2" />
-      <path d="M2 8h20" />
-      <path d="m8 13 2 2-2 2" />
-      <line x1="12" y1="17" x2="15" y2="17" />
-    </svg>
-  ),
-  Changes: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-    </svg>
-  ),
-  PR: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
-    </svg>
-  ),
-  Terminal: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-    </svg>
-  ),
-  Files: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-    </svg>
-  ),
+const TAB_CONFIG: Record<
+  PanelTab,
+  { label: string; icon?: React.ReactNode }
+> = {
+  Progress: {
+    label: 'Progress',
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+  },
+  Changes: {
+    label: 'Changes',
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+      </svg>
+    ),
+  },
+  PR: {
+    label: 'PR #142',
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
+      </svg>
+    ),
+  },
+  Editor: {
+    label: '</> Editor',
+  },
 };
+
+function ProgressView() {
+  const steps = [
+    { title: 'Task Initialized', desc: 'Received instruction: "Fix checkout rate-limit test and add bot commit author"', time: '0.1s' },
+    { title: 'Sandbox Bootstrapped', desc: 'Started Docker microcontainer orion-box (port 5001)', time: '0.4s' },
+    { title: 'Cloned Repository', desc: 'git clone https://github.com/Kunall04/agent-checkout-gate (workspace: /workspace)', time: '0.8s' },
+    { title: 'Executed Test Suite', desc: 'vitest run → FAIL src/routes/tasks.test.ts (rate limit assertion 429 missing)', time: '1.2s' },
+    { title: 'Synthesized Fix with LLM', desc: 'Groq LLaMA 3.3 70B generated updated route tests and bot attribution setup', time: '1.9s' },
+    { title: 'Patched Test Suite', desc: 'Updated apps/backend/src/routes/tasks.test.ts (+12, -2)', time: '0.2s' },
+    { title: 'Created Verification Spec', desc: 'Wrote ORION_VERIFICATION.md documentation', time: '0.1s' },
+    { title: 'Re-ran Verification in Sandbox', desc: 'vitest run → 34 passed (34 checks clean in 1.4s)', time: '1.4s' },
+    { title: 'Committed as Bot Author', desc: 'git commit -m "feat: configure bot user ID attribution" (author: 344046298+orion-coding-agent[bot])', time: '0.3s' },
+    { title: 'Pushed to GitHub', desc: 'git push origin orion/fix-rate-limit', time: '0.7s' },
+    { title: 'Opened Pull Request #142', desc: 'Merged into main branch ready for human-in-the-loop signoff', time: '0.5s' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <div className="flex items-center justify-between border-b border-line pb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-green animate-pulse" />
+          <h4 className="text-[13px] font-semibold text-ink">Agent Execution Progress</h4>
+        </div>
+        <span className="rounded bg-surface px-2 py-0.5 font-mono text-[10px] text-ink-3 shadow-hairline">
+          Total: 5.4s
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5 pt-1">
+        {steps.map((s, idx) => (
+          <div key={idx} className="flex items-start gap-2.5 rounded-control p-2 hover:bg-hover transition-colors">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green/15 text-[10px] font-bold text-green">
+              ✓
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium text-ink">{s.title}</span>
+                <span className="font-mono text-[10px] text-ink-3">{s.time}</span>
+              </div>
+              <p className="font-mono text-[11px] text-ink-3 leading-snug break-words">{s.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PRView() {
   return (
@@ -86,15 +134,15 @@ function PRView() {
 }
 
 export default function RightPanel({
-  initialWidth = 440,
+  initialWidth = 460,
   minWidth = 300,
-  maxWidth = 840,
+  maxWidth = 860,
 }: {
   initialWidth?: number;
   minWidth?: number;
   maxWidth?: number;
 }) {
-  const [tab, setTab] = useState<PanelTab>('IDE');
+  const [tab, setTab] = useState<PanelTab>('Editor');
   const [width, setWidth] = useState(initialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const isDraggingRef = useRef(false);
@@ -132,8 +180,8 @@ export default function RightPanel({
   };
 
   const handleDoubleClick = () => {
-    // Toggle between default compact (380px) and wide view (640px)
-    setWidth((prev) => (prev > 500 ? 380 : 640));
+    // Toggle between default compact (400px) and wide view (660px)
+    setWidth((prev) => (prev > 520 ? 400 : 660));
   };
 
   return (
@@ -158,31 +206,46 @@ export default function RightPanel({
         />
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar (Matching Image 2: [Progress] [Changes] [PR #142] [</> Editor] [+]) */}
       <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-3">
         <div className="flex items-center gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12.5px] font-medium transition-colors duration-100 ${
-                tab === t
-                  ? 'bg-surface text-ink shadow-btn'
-                  : 'text-ink-3 hover:bg-hover hover:text-ink-2'
-              }`}
-            >
-              <span className={tab === t ? 'text-ink' : 'text-ink-3'}>{TAB_ICONS[t]}</span>
-              {t}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const config = TAB_CONFIG[t];
+            const isActive = tab === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12px] font-medium transition-colors duration-100 ${
+                  isActive
+                    ? 'bg-surface text-ink shadow-btn'
+                    : 'text-ink-3 hover:bg-hover hover:text-ink-2'
+                }`}
+              >
+                {config.icon && <span className={isActive ? 'text-ink' : 'text-ink-3'}>{config.icon}</span>}
+                <span>{config.label}</span>
+              </button>
+            );
+          })}
+
+          {/* Plus Add Tab Button */}
+          <button
+            type="button"
+            title="Add tab"
+            className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
         </div>
 
         {/* Width toggle button */}
         <button
           type="button"
           onClick={handleDoubleClick}
-          title={width > 500 ? 'Compact panel' : 'Expand panel'}
+          title={width > 520 ? 'Compact panel' : 'Expand panel'}
           className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover hover:text-ink"
         >
           <svg
@@ -195,7 +258,7 @@ export default function RightPanel({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            {width > 500 ? (
+            {width > 520 ? (
               <polyline points="4 14 10 14 10 20M20 10 14 10 14 4" />
             ) : (
               <polyline points="15 3 21 3 21 9M9 21 3 21 3 15" />
@@ -205,12 +268,11 @@ export default function RightPanel({
       </div>
 
       {/* Tab content */}
-      <div className={`min-h-0 flex-1 ${tab === 'IDE' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-        {tab === 'IDE' && <VSCodeIDE />}
+      <div className={`min-h-0 flex-1 ${tab === 'Editor' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        {tab === 'Progress' && <ProgressView />}
         {tab === 'Changes' && <CodeDiffViewer />}
         {tab === 'PR' && <PRView />}
-        {tab === 'Terminal' && <InteractiveTerminal />}
-        {tab === 'Files' && <FileTreeViewer />}
+        {tab === 'Editor' && <VSCodeIDE />}
       </div>
     </aside>
   );

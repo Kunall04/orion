@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import OrionLogo from './OrionLogo';
 
+export interface SessionItem {
+  id: string;
+  title: string;
+  pr?: string;
+  status: 'running' | 'done' | 'idle';
+  time: string;
+}
+
 const NAV_ITEMS = [
-  { icon: 'plus', label: 'New session' },
+  { icon: 'plus', label: 'New session', action: 'new_session' },
   { icon: 'zap', label: 'Automations' },
   { icon: 'shield', label: 'Security' },
   { icon: 'eye', label: 'Review' },
   { icon: 'book', label: 'Wiki' },
   { icon: 'sliders', label: 'Customize' },
-] as const;
-
-const SESSION_LIST = [
-  { id: 's1', title: 'Fix checkout rate-limit test', pr: '#142', status: 'running', time: '2m ago' },
-  { id: 's2', title: 'Add OpenTelemetry tracing', pr: '#138', status: 'done', time: '1h ago' },
-  { id: 's3', title: 'Migrate tests to Vitest', pr: '#135', status: 'done', time: '3h ago' },
-  { id: 's4', title: 'Add rate-limit middleware', pr: '#131', status: 'done', time: '1d ago' },
 ] as const;
 
 const ICON_PATHS: Record<string, React.ReactNode> = {
@@ -49,11 +50,15 @@ const ICON_PATHS: Record<string, React.ReactNode> = {
 };
 
 export default function Sidebar({
+  sessions = [],
   activeSession = 's1',
   onSelectSession,
+  onNewSession,
 }: {
+  sessions?: SessionItem[];
   activeSession?: string;
   onSelectSession?: (id: string) => void;
+  onNewSession?: () => void;
 }) {
   const [activeNav, setActiveNav] = useState<string>('plus');
 
@@ -74,11 +79,18 @@ export default function Sidebar({
           <button
             key={item.icon}
             type="button"
-            onClick={() => setActiveNav(item.icon)}
+            onClick={() => {
+              setActiveNav(item.icon);
+              if ('action' in item && item.action === 'new_session') {
+                onNewSession?.();
+              }
+            }}
             className={`flex h-8 w-full items-center gap-2.5 rounded-control px-2.5 text-[12.5px] font-medium transition-colors duration-100 ${
-              activeNav === item.icon
-                ? 'bg-surface text-ink shadow-btn'
-                : 'text-ink-2 hover:bg-hover hover:text-ink'
+              item.icon === 'plus'
+                ? 'bg-field text-ink hover:bg-surface shadow-hairline'
+                : activeNav === item.icon
+                  ? 'bg-surface text-ink shadow-btn'
+                  : 'text-ink-2 hover:bg-hover hover:text-ink'
             }`}
           >
             <svg
@@ -93,12 +105,12 @@ export default function Sidebar({
       </nav>
 
       {/* Divider + Session list */}
-      <div className="mt-3 border-t border-line px-2 pt-2">
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t border-line px-2 pt-2">
         <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
           Recent
         </p>
         <div className="flex flex-col gap-0.5">
-          {SESSION_LIST.map((s) => (
+          {sessions.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -118,11 +130,11 @@ export default function Sidebar({
                   {s.title}
                 </span>
                 {s.status === 'running' && (
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green" />
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green animate-pulse" />
                 )}
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="font-mono text-[10.5px] text-accent">{s.pr}</span>
+                {s.pr && <span className="font-mono text-[10.5px] text-accent">{s.pr}</span>}
                 <span className="text-[10.5px] text-ink-3">{s.time}</span>
               </div>
             </button>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import DiffTable from './DiffTable';
+import CodeDiffViewer from './CodeDiffViewer';
 import ToolChips from './ToolChips';
 import ApprovalCard from './ApprovalCard';
 
@@ -163,11 +163,7 @@ export default function RightPanel() {
       {/* Tab content */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'PR' && <PRView />}
-        {tab === 'Changes' && (
-          <div className="p-4">
-            <DiffTable />
-          </div>
-        )}
+        {tab === 'Changes' && <CodeDiffViewer />}
         {tab === 'Terminal' && <TerminalView />}
         {tab === 'Files' && <FilesView />}
       </div>

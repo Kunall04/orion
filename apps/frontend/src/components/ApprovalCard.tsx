@@ -21,19 +21,22 @@ export type ApprovalQuestion = {
 
 const QUESTIONS: ApprovalQuestion[] = [
   {
-    q: "How many flavors should we launch?",
+    q: "Approve Pull Request creation?",
     type: "radio",
-    options: ["Three (core line)", "Five (full case)", "Just one hero"],
+    options: ["Open PR immediately", "Review diff in sandbox first", "Create draft PR"],
   },
   {
-    q: "Which mix-ins should we stock?",
-    type: "check",
-    options: ["Chocolate chips", "Waffle bits", "Sprinkles"],
+    q: "Target base branch:",
+    type: "radio",
+    options: ["main", "develop", "staging"],
   },
   {
-    q: "Which market do we enter first?",
+    q: "Commit author attribution:",
     type: "radio",
-    options: ["Food trucks", "Grocery freezers", "Scoop shops"],
+    options: [
+      "orion-coding-agent[bot] (Recommended)",
+      "Kunall04 <kunalrohilla3804@gmail.com>",
+    ],
   },
 ];
 
@@ -48,9 +51,9 @@ export type ApprovalLabels = {
 const DEFAULT_LABELS: ApprovalLabels = {
   skip: "Skip",
   continue: "Continue",
-  send: "Send",
-  customPlaceholder: "Something else…",
-  sentMessage: "Answers sent",
+  send: "Approve",
+  customPlaceholder: "Custom instructions…",
+  sentMessage: "PR approval confirmed",
 };
 
 const ROLL_MS = 400;

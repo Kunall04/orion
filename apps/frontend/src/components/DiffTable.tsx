@@ -31,15 +31,15 @@ export type DiffRow = {
 };
 
 const ROWS: DiffRow[] = [
-  { key: "rocky", id: "Rocky Road", dept: "Classic", email: "aurora-scoops", removed: true },
-  { key: "bubblegum", id: "Bubblegum", dept: "Retro", email: "kumo-creamery", removed: true },
-  { key: "mint", id: "Mint Chip", dept: "Classic", email: "maple-orbit", removed: false },
+  { key: "test", id: "tasks.test.ts", dept: "Test", email: "fix rate limit assertion", removed: false },
+  { key: "verif", id: "ORION_VERIFICATION.md", dept: "Doc", email: "author bot attribution", removed: false },
+  { key: "repos", id: "repos.ts", dept: "Git", email: "bot commit author config", removed: true },
 ];
 
 const DOT: Record<string, string> = {
-  Classic: "bg-accent",
-  Retro: "bg-ink-3",
-  Seasonal: "bg-orange",
+  Test: "bg-accent",
+  Doc: "bg-green",
+  Git: "bg-orange",
 };
 
 function IncludedMark({ included, tone }: { included: boolean; tone: "red" | "green" }) {
@@ -83,19 +83,19 @@ export default function DiffTable({
     <div className="w-full max-w-95">
       <div className="relative overflow-hidden rounded-card bg-surface shadow-card">
         <div className="primitive-card-bar flex items-center justify-between border-b border-line">
-          <span className="text-[12.5px] font-medium text-ink">Proposed menu cleanup</span>
+          <span className="text-[12.5px] font-medium text-ink">Staged file changes</span>
           {settled && !accepted && <span className="text-[11px] text-ink-3">Click changed rows to toggle</span>}
         </div>
 
         <table className="w-full table-fixed border-collapse text-left">
           <colgroup>
-            <col className="w-[34%]" />
-            <col className="w-[30%]" />
+            <col className="w-[38%]" />
+            <col className="w-[26%]" />
             <col className="w-[36%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-line">
-              {["Flavor", "Category", "Supplier"].map((h) => (
+              {["File", "Type", "Scope"].map((h) => (
                 <th key={h} className="primitive-table-cell text-[12px] font-medium text-ink-3">
                   {h}
                 </th>

@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
  * to show what the tool actually did.
  * ───────────────────────────────────────────────────────── */
 
-const STEP_MS = 700;
+const STEP_MS = 350;
 
 const Icons: Record<string, React.ReactNode> = {
   think: <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />,
@@ -40,80 +40,42 @@ export type ToolChipsLabels = {
   more: string;
 };
 
-const DEFAULT_LABELS: ToolChipsLabels = {
-  header: "4 tool calls, 2 messages",
-  more: "+2 more",
-};
-
-const ROWS: ToolStep[] = [
+const DEFAULT_STEPS: ToolStep[] = [
   {
-    icon: "think", label: "Thinking", chip: "Planning the churn schedule…", mono: false, detailMono: false,
-    detail: [
-      { text: "Weekend demand carries pistachio, so it churns first." },
-      { text: "Batch capacity leaves two evening freezer windows." },
-    ],
+    icon: "run", label: "Clone repo", chip: "git clone", mono: true, detailMono: true,
+    detail: [{ text: "cloned Kunall04/agent-checkout-gate" }],
   },
   {
-    icon: "write", label: "Write 204 lines", chip: "ChurnSchedule.tsx", mono: true, detailMono: true,
-    detail: [
-      { text: "+ const windows = slots.filter((s) => s.temp <= -12)", tone: "add" },
-      { text: "+ return schedule(windows, { hero: \"pistachio\" })", tone: "add" },
-    ],
+    icon: "run", label: "Execute tests", chip: "npm test", mono: true, detailMono: true,
+    detail: [{ text: "34 checks passed in 1.4s" }],
   },
   {
-    icon: "run", label: "Rebuild and verify", chip: "npm run freeze", mono: true, detailMono: true,
-    detail: [
-      { text: "✓ built in 1.2s" },
-      { text: "✓ 34 checks passed" },
-    ],
-  },
-  {
-    icon: "read", label: "Read image", chip: "flavor-chart.png", mono: true, detailMono: false,
-    detail: [
-      { text: "1280 × 720 · line chart, three summers." },
-      { text: "Mint chip trends up 12% through July." },
-    ],
+    icon: "write", label: "Apply changes", chip: "ORION_VERIFICATION.md", mono: true, detailMono: true,
+    detail: [{ text: "+ author verification with bot attribution", tone: "add" }],
   },
 ];
 
-const DIFFS: ToolDiff[] = [
-  { file: "flavors.css", add: 13, del: 0 },
-  { file: "ChurnSchedule.tsx", add: 74, del: 41 },
-  { file: "menu.ts", add: 8, del: 2 },
+const DEFAULT_DIFFS: ToolDiff[] = [
+  { file: "ORION_VERIFICATION.md", add: 12, del: 0 },
 ];
 
-/* hovering a file chip opens its diff — green added, red removed */
-const DIFF_LINES: Record<string, ToolDiffLine[]> = {
-  "flavors.css": [
-    { text: ".scoop-card {", tone: "ctx" },
-    { text: "  gap: 14px;", tone: "del" },
-    { text: "  gap: 12px;", tone: "add" },
-    { text: "  container-type: inline-size;", tone: "add" },
-    { text: "}", tone: "ctx" },
-  ],
-  "ChurnSchedule.tsx": [
-    { text: "const slots = coldSlots(week);", tone: "ctx" },
-    { text: "const windows = slots;", tone: "del" },
-    { text: "const windows = slots.filter(", tone: "add" },
-    { text: "  (s) => s.temp <= -12,", tone: "add" },
-    { text: ");", tone: "add" },
-  ],
-  "menu.ts": [
-    { text: "export const hero = \"mint-chip\";", tone: "del" },
-    { text: "export const hero = \"pistachio\";", tone: "add" },
+const DEFAULT_DIFF_LINES: Record<string, ToolDiffLine[]> = {
+  "ORION_VERIFICATION.md": [
+    { text: "# Orion Coding Agent Verification", tone: "add" },
+    { text: "- Status: Verified", tone: "add" },
+    { text: "- Bot: orion-coding-agent[bot]", tone: "add" },
   ],
 };
 
 export default function ToolChips({
-  steps = ROWS,
-  diffs = DIFFS,
-  diffLines = DIFF_LINES,
+  steps = DEFAULT_STEPS,
+  diffs = DEFAULT_DIFFS,
+  diffLines = DEFAULT_DIFF_LINES,
   labels,
   className,
   onOpenChange,
   onToggleRow,
 }: {
-  /** Accepted for gallery/registry parity; ToolChips has no visual variants. */
   variant?: string;
   steps?: ToolStep[];
   diffs?: ToolDiff[];
@@ -123,18 +85,19 @@ export default function ToolChips({
   onOpenChange?: (open: boolean) => void;
   onToggleRow?: (label: string, open: boolean) => void;
 } = {}) {
-  const copy = { ...DEFAULT_LABELS, ...labels };
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(steps.length);
   const [open, setOpen] = useState(true);
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
-  /* Rendered in a body portal so animated/translated reply wrappers cannot
-   * redefine the fixed-position coordinate system. */
   const [preview, setPreview] = useState<{
     file: string;
     x: number;
     top?: number;
     bottom?: number;
   } | null>(null);
+
+  const headerText = labels?.header ?? `${steps.length} tool call${steps.length === 1 ? '' : 's'}`;
+  const moreText = labels?.more ?? "+more";
+
   const openPreview = (file: string) => (event: React.SyntheticEvent) => {
     const rect = (event.currentTarget as Element).closest("[data-diffchip]")!.getBoundingClientRect();
     const previewHeight = 38 + (diffLines[file]?.length ?? 0) * 19;
@@ -149,13 +112,14 @@ export default function ToolChips({
   };
   const closePreview = (file: string) => () =>
     setPreview((current) => (current?.file === file ? null : current));
-  const total = steps.length + 1; // rows, then diff chips
+
+  const total = steps.length + (diffs.length > 0 ? 1 : 0);
 
   useEffect(() => {
-    if (step >= total) return;
-    const t = setTimeout(() => setStep((s) => s + 1), STEP_MS);
-    return () => clearTimeout(t);
-  }, [step, total]);
+    setStep(steps.length);
+  }, [steps.length]);
+
+  if (steps.length === 0) return null;
 
   const toggleRow = (label: string) =>
     setOpenRows((current) => {
@@ -166,7 +130,7 @@ export default function ToolChips({
     });
 
   return (
-    <div className={`min-h-[220px] w-full max-w-80 pb-1${className ? ` ${className}` : ""}`}>
+    <div className={`w-full max-w-86 pb-1${className ? ` ${className}` : ""}`}>
       {/* collapsed run header */}
       <button
         type="button"
@@ -177,28 +141,27 @@ export default function ToolChips({
             return !current;
           })
         }
-        className="-mx-1.5 flex w-fit items-center gap-1.5 rounded-control px-1.5 py-1 text-[12.5px] text-ink-2 transition-colors duration-100 hover:bg-hover-2"
+        className="-mx-1.5 flex w-fit items-center gap-1.5 rounded-control px-1.5 py-0.5 text-[12px] text-ink-2 transition-colors duration-100 hover:bg-hover-2"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-200" style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
-        <span className="tabular-nums">{copy.header}</span>
+        <span className="tabular-nums font-medium">{headerText}</span>
       </button>
 
       {/* tool call rows */}
       <div className="grid transition-[grid-template-rows,opacity] duration-300" style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}>
-        {/* -mx-1 + px-1.5 keeps content at the same x while giving the
-            row hover pills room inside this overflow-hidden clip box */}
         <div className="-mx-1 overflow-hidden px-1.5 pb-1">
-        <div className="mt-1.5 flex flex-col gap-1">
-          {steps.slice(0, step).map((row) => {
-            const rowOpen = openRows.has(row.label);
+        <div className="mt-1 flex flex-col gap-1">
+          {steps.slice(0, step).map((row, idx) => {
+            const rowKey = `${row.label}-${idx}`;
+            const rowOpen = openRows.has(rowKey);
             return (
-            <div key={row.label} style={{ animation: "fade-up 300ms cubic-bezier(0.23,1,0.32,1) both" }}>
+            <div key={rowKey} style={{ animation: "fade-up 250ms cubic-bezier(0.23,1,0.32,1) both" }}>
               <button
                 type="button"
                 aria-expanded={rowOpen}
-                onClick={() => toggleRow(row.label)}
+                onClick={() => toggleRow(rowKey)}
                 className="group/row -mx-[3px] flex h-7 w-[calc(100%+6px)] min-w-0 items-center gap-2 rounded-control px-[3px] text-left transition-colors duration-100 hover:bg-hover-2"
               >
                 <span className="relative flex size-4 shrink-0 items-center justify-center text-ink-3">
@@ -206,7 +169,7 @@ export default function ToolChips({
                     width="13" height="13" viewBox="0 0 24 24" fill={row.icon === "think" ? "currentColor" : "none"} stroke="currentColor"
                     className={`transition-opacity duration-100 group-hover/row:opacity-0 ${rowOpen ? "opacity-0" : ""}`}
                   >
-                    {Icons[row.icon]}
+                    {Icons[row.icon] || Icons.run}
                   </svg>
                   <svg
                     width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
@@ -233,9 +196,9 @@ export default function ToolChips({
               >
                 <div className="min-h-0 overflow-hidden">
                   <div className="mt-0.5 mb-1 ml-2 flex flex-col gap-0.5 border-l border-line py-0.5 pl-3.5">
-                    {row.detail.map((line) => (
+                    {row.detail.map((line, lIdx) => (
                       <span
-                        key={line.text}
+                        key={lIdx}
                         className={`truncate text-[11.5px] leading-[1.6] ${row.detailMono ? "font-mono" : ""} ${line.tone === "add" ? "text-green" : "text-ink-2"}`}
                       >
                         {line.text}
@@ -249,9 +212,9 @@ export default function ToolChips({
           })}
         </div>
 
-      {/* file-diff chips */}
-      {step >= total && (
-        <div className="mt-2.5 flex max-w-full flex-wrap gap-1.5 border-t border-line pt-2.5">
+      {/* file-diff chips (only if diffs exist) */}
+      {diffs.length > 0 && (
+        <div className="mt-2 flex max-w-full flex-wrap gap-1.5 border-t border-line pt-2">
           {diffs.map((d, i) => (
             <span
               key={d.file}
@@ -266,27 +229,17 @@ export default function ToolChips({
                 aria-label={`Show diff for ${d.file}`}
                 onFocus={openPreview(d.file)}
                 onBlur={closePreview(d.file)}
-                className="inline-flex h-7 max-w-full items-center gap-2 rounded-chip
-                  bg-surface px-2 font-mono text-[11.5px] text-ink shadow-btn
+                className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-chip
+                  bg-surface px-2 font-mono text-[11px] text-ink shadow-btn
                   transition-colors duration-100 hover:bg-hover"
-                style={{ animation: `pop-in 250ms cubic-bezier(0.23,1,0.32,1) ${i * 80}ms both` }}
+                style={{ animation: `pop-in 200ms cubic-bezier(0.23,1,0.32,1) ${i * 80}ms both` }}
               >
                 <span className="min-w-0 truncate">{d.file}</span>
                 <span className="shrink-0 text-green tabular-nums">+{d.add}</span>
                 {d.del > 0 && <span className="shrink-0 text-red tabular-nums">−{d.del}</span>}
               </button>
-
             </span>
           ))}
-          <button
-            type="button"
-            className="inline-flex h-7 items-center rounded-chip px-1.5 font-mono text-[11.5px] text-ink-3
-              underline decoration-transparent underline-offset-2 transition-colors duration-100
-              hover:text-ink-2 hover:decoration-current"
-            style={{ animation: `fade-in 300ms ease-out ${diffs.length * 80}ms both` }}
-          >
-            {copy.more}
-          </button>
         </div>
       )}
         </div>

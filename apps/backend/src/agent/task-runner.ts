@@ -87,6 +87,61 @@ async function runSimulatedAgentFlow(
   repo: string,
   onEvent: (event: AgentEvent) => void,
 ): Promise<string> {
+  const lower = instruction.toLowerCase();
+
+  // If user asked to run a command specifically (e.g. "run git status", "git diff", etc.)
+  if (lower.includes('git status') || lower.includes('git diff') || lower.includes('git branch') || lower.includes('git log') || lower.includes('ls')) {
+    const cmd = lower.includes('git status')
+      ? 'git status'
+      : lower.includes('git diff')
+        ? 'git diff'
+        : lower.includes('git branch')
+          ? 'git branch'
+          : lower.includes('git log')
+            ? 'git log -n 3 --oneline'
+            : 'ls -la';
+
+    onEvent({
+      type: 'thinking',
+      text: `Executing requested shell command "${cmd}" in /workspace sandbox.`,
+    });
+    await sleep(400);
+
+    let output = '';
+    if (cmd === 'git status') {
+      output = `On branch orion/fix-rate-limit\nYour branch is up to date with 'origin/orion/fix-rate-limit'.\n\nChanges to be committed:\n  modified:   apps/backend/src/routes/tasks.test.ts\n  new file:   ORION_VERIFICATION.md`;
+    } else if (cmd === 'git diff') {
+      output = `diff --git a/apps/backend/src/routes/tasks.test.ts b/apps/backend/src/routes/tasks.test.ts\n--- a/apps/backend/src/routes/tasks.test.ts\n+++ b/apps/backend/src/routes/tasks.test.ts\n@@ -21,6 +21,6 @@\n-    // Rate limit not asserted\n+    expect(res.statusCode).toBe(429);`;
+    } else if (cmd === 'git branch') {
+      output = `  main\n* orion/fix-rate-limit`;
+    } else if (cmd === 'git log -n 3 --oneline') {
+      output = `2eaa1dc feat(dashboard): match reference layout\n54b28d1 feat(dashboard): integrate embedded VSCode IDE\n82c3212 feat: add interactive terminal`;
+    } else {
+      output = `total 48\n-rw-r--r--  1 ubuntu ubuntu 1205 Oct 19 14:20 ORION_VERIFICATION.md\ndrwxr-xr-x  4 ubuntu ubuntu  128 Oct 19 14:00 apps\n-rw-r--r--  1 ubuntu ubuntu  840 Oct 19 14:00 package.json`;
+    }
+
+    onEvent({
+      type: 'tool_call',
+      name: 'run_command',
+      args: { command: cmd },
+    });
+    await sleep(400);
+
+    onEvent({
+      type: 'tool_result',
+      name: 'run_command',
+      result: output,
+    });
+    await sleep(400);
+
+    const summary = `Executed "${cmd}" in the workspace sandbox:\n\n${output}`;
+    onEvent({
+      type: 'message',
+      content: summary,
+    });
+    return summary;
+  }
+
   // Step 1: Thinking phase
   onEvent({
     type: 'thinking',

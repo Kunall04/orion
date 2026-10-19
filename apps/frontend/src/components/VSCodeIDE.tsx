@@ -162,6 +162,25 @@ export default function VSCodeIDE({
     termScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [termEntries]);
 
+  // Synchronize terminal with commands run by the agent from chat
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ command: string; output: string }>;
+      if (!customEvent.detail) return;
+      const { command, output } = customEvent.detail;
+      setTerminalOpen(true);
+      setActivePanelTab('terminal');
+      setTermEntries((prev) => [
+        ...prev,
+        { id: `in-${Date.now()}`, type: 'in', text: command },
+        { id: `out-${Date.now()}`, type: 'out', text: output },
+      ]);
+    };
+
+    window.addEventListener('orion:terminal-command', handler);
+    return () => window.removeEventListener('orion:terminal-command', handler);
+  }, []);
+
   const handleCommand = async (cmd: string) => {
     const trimmed = cmd.trim();
     if (!trimmed) return;

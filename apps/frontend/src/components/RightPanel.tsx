@@ -1,22 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
+import VSCodeIDE from './VSCodeIDE';
 import CodeDiffViewer from './CodeDiffViewer';
 import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
 import ApprovalCard from './ApprovalCard';
 
-type PanelTab = 'PR' | 'Changes' | 'Terminal' | 'Files';
+type PanelTab = 'IDE' | 'Changes' | 'PR' | 'Terminal' | 'Files';
 
-const TABS: PanelTab[] = ['PR', 'Changes', 'Terminal', 'Files'];
+const TABS: PanelTab[] = ['IDE', 'Changes', 'PR', 'Terminal', 'Files'];
 
 const TAB_ICONS: Record<PanelTab, React.ReactNode> = {
-  PR: (
+  IDE: (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
+      <rect x="2" y="3" width="20" height="18" rx="2" />
+      <path d="M2 8h20" />
+      <path d="m8 13 2 2-2 2" />
+      <line x1="12" y1="17" x2="15" y2="17" />
     </svg>
   ),
   Changes: (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+    </svg>
+  ),
+  PR: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
     </svg>
   ),
   Terminal: (
@@ -77,15 +86,15 @@ function PRView() {
 }
 
 export default function RightPanel({
-  initialWidth = 380,
-  minWidth = 280,
-  maxWidth = 720,
+  initialWidth = 440,
+  minWidth = 300,
+  maxWidth = 840,
 }: {
   initialWidth?: number;
   minWidth?: number;
   maxWidth?: number;
 }) {
-  const [tab, setTab] = useState<PanelTab>('Changes');
+  const [tab, setTab] = useState<PanelTab>('IDE');
   const [width, setWidth] = useState(initialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const isDraggingRef = useRef(false);
@@ -123,8 +132,8 @@ export default function RightPanel({
   };
 
   const handleDoubleClick = () => {
-    // Toggle between default compact (360px) and wide view (580px)
-    setWidth((prev) => (prev > 450 ? 360 : 580));
+    // Toggle between default compact (380px) and wide view (640px)
+    setWidth((prev) => (prev > 500 ? 380 : 640));
   };
 
   return (
@@ -173,7 +182,7 @@ export default function RightPanel({
         <button
           type="button"
           onClick={handleDoubleClick}
-          title={width > 450 ? 'Compact panel' : 'Expand panel'}
+          title={width > 500 ? 'Compact panel' : 'Expand panel'}
           className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover hover:text-ink"
         >
           <svg
@@ -186,7 +195,7 @@ export default function RightPanel({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            {width > 450 ? (
+            {width > 500 ? (
               <polyline points="4 14 10 14 10 20M20 10 14 10 14 4" />
             ) : (
               <polyline points="15 3 21 3 21 9M9 21 3 21 3 15" />
@@ -196,9 +205,10 @@ export default function RightPanel({
       </div>
 
       {/* Tab content */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'PR' && <PRView />}
+      <div className={`min-h-0 flex-1 ${tab === 'IDE' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        {tab === 'IDE' && <VSCodeIDE />}
         {tab === 'Changes' && <CodeDiffViewer />}
+        {tab === 'PR' && <PRView />}
         {tab === 'Terminal' && <InteractiveTerminal />}
         {tab === 'Files' && <FileTreeViewer />}
       </div>

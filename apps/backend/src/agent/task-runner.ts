@@ -13,6 +13,8 @@ export interface TaskExecutionOptions {
   instruction: string;
   repo?: string;
   onEvent: (event: AgentEvent) => void;
+  sandboxUrl?: string;
+  sandboxClient?: SandboxClient;
 }
 
 /**
@@ -24,9 +26,14 @@ export async function executeTask({
   instruction,
   repo = 'Kunall04/agent-checkout-gate',
   onEvent,
+  sandboxUrl,
+  sandboxClient,
 }: TaskExecutionOptions): Promise<string> {
-  const sandboxUrl = process.env.SANDBOX_URL ?? 'http://127.0.0.1:5001';
-  const sandbox = new SandboxClient({ baseUrl: sandboxUrl });
+  const sandbox =
+    sandboxClient ??
+    new SandboxClient({
+      baseUrl: sandboxUrl ?? process.env.SANDBOX_URL ?? 'http://127.0.0.1:5001',
+    });
 
   let isSandboxHealthy = false;
   try {

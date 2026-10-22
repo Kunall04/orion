@@ -184,4 +184,61 @@ describe('backend', () => {
       expect(res.json().error).toContain('Failed to mint installation token (HTTP 404)');
     });
   });
+
+  describe('Session and multi-sandbox routes', () => {
+    it('creates, retrieves, and terminates sessions with isolated sandboxes', async () => {
+      const app = buildApp({ autoExecuteTasks: false });
+
+      // Create session
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: { id: 'chat-test-1', repo: 'owner/test-repo' },
+      });
+      expect(createRes.statusCode).toBe(200);
+      const createData = createRes.json();
+      expect(createData.ok).toBe(true);
+      expect(createData.session.id).toBe('chat-test-1');
+      expect(createData.session.sandbox.port).toBeDefined();
+
+      // List sessions
+      const listRes = await app.inject({ method: 'GET', url: '/sessions' });
+      expect(listRes.statusCode).toBe(200);
+      expect(listRes.json().sessions).toHaveLength(1);
+
+      // Get single session
+      const getRes = await app.inject({ method: 'GET', url: '/sessions/chat-test-1' });
+      expect(getRes.statusCode).toBe(200);
+      expect(getRes.json().session.id).toBe('chat-test-1');
+
+      // Create task associated with session
+      const taskRes = await app.inject({
+        method: 'POST',
+        url: '/tasks',
+        payload: { instruction: 'run test', sessionId: 'chat-test-1' },
+      });
+      expect(taskRes.statusCode).toBe(200);
+      expect(taskRes.json().task.sessionId).toBe('chat-test-1');
+      expect(taskRes.json().task.sandboxUrl).toBe(createData.session.sandbox.url);
+
+      // Terminate session
+      const delRes = await app.inject({ method: 'DELETE', url: '/sessions/chat-test-1' });
+      expect(delRes.statusCode).toBe(200);
+      expect(delRes.json().terminated).toBe(true);
+
+      // Verify session is gone
+      const getAfterDel = await app.inject({ method: 'GET', url: '/sessions/chat-test-1' });
+      expect(getAfterDel.statusCode).toBe(404);
+    });
+
+    it('returns 404 when getting or deleting non-existent session', async () => {
+      const app = buildApp({ autoExecuteTasks: false });
+
+      const getRes = await app.inject({ method: 'GET', url: '/sessions/ghost' });
+      expect(getRes.statusCode).toBe(404);
+
+      const delRes = await app.inject({ method: 'DELETE', url: '/sessions/ghost' });
+      expect(delRes.statusCode).toBe(404);
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './git
 import { listInstallationRepos } from './github/repos';
 import { executeTask } from './agent/task-runner';
 import type { AgentEvent } from './agent/loop';
+import { SessionManager } from './session/manager';
 
 export interface InstallationRecord {
   installationId: string;
@@ -14,6 +15,8 @@ export interface InstallationRecord {
 export interface TaskRecord {
   id: string;
   instruction: string;
+  sessionId?: string;
+  sandboxUrl?: string;
   repo?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   events: AgentEvent[];
@@ -37,6 +40,8 @@ export interface BackendAppOptions {
   githubBaseUrl?: string;
   /** Auto-execute tasks in background (defaults to true) */
   autoExecuteTasks?: boolean;
+  /** Optional SessionManager for multi-session sandbox isolation */
+  sessionManager?: SessionManager;
 }
 
 /**
@@ -46,6 +51,7 @@ export interface BackendAppOptions {
 export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   const installations = options.installations ?? new Map<string, InstallationRecord>();
   const tasks = options.tasks ?? new Map<string, TaskRecord>();
+  const sessionManager = options.sessionManager ?? new SessionManager();
   const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
   const autoExecute = options.autoExecuteTasks ?? true;
 
@@ -138,9 +144,86 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   });
 
   /**
+   * List active sessions
+   */
+  app.get('/sessions', async () => {
+    return {
+      ok: true,
+      sessions: sessionManager.listSessions().map((s) => ({
+        id: s.id,
+        repo: s.repo,
+        sandbox: s.sandbox,
+        createdAt: s.createdAt,
+      })),
+    };
+  });
+
+  /**
+   * Create or retrieve a session with a dedicated sandbox
+   */
+  app.post<{ Body: { id: string; repo?: string } }>(
+    '/sessions',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', minLength: 1 },
+            repo: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (req) => {
+      const { id, repo } = req.body;
+      const session = await sessionManager.getOrCreateSession(id, repo);
+      return {
+        ok: true,
+        session: {
+          id: session.id,
+          repo: session.repo,
+          sandbox: session.sandbox,
+          createdAt: session.createdAt,
+        },
+      };
+    },
+  );
+
+  /**
+   * Get single session details
+   */
+  app.get<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
+    const session = sessionManager.getSession(req.params.id);
+    if (!session) {
+      return reply.status(404).send({ ok: false, error: 'Session not found' });
+    }
+    return {
+      ok: true,
+      session: {
+        id: session.id,
+        repo: session.repo,
+        sandbox: session.sandbox,
+        createdAt: session.createdAt,
+      },
+    };
+  });
+
+  /**
+   * Terminate session and release its sandbox
+   */
+  app.delete<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
+    const terminated = await sessionManager.terminateSession(req.params.id);
+    if (!terminated) {
+      return reply.status(404).send({ ok: false, error: 'Session not found' });
+    }
+    return { ok: true, terminated: true };
+  });
+
+  /**
    * Create new agent task
    */
-  app.post<{ Body: { instruction: string; repo?: string } }>(
+  app.post<{ Body: { instruction: string; repo?: string; sessionId?: string } }>(
     '/tasks',
     {
       schema: {
@@ -150,17 +233,26 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
           properties: {
             instruction: { type: 'string', minLength: 1 },
             repo: { type: 'string' },
+            sessionId: { type: 'string' },
           },
         },
       },
     },
     async (req) => {
-      const { instruction, repo } = req.body;
+      const { instruction, repo, sessionId } = req.body;
       const id = `task-${Date.now()}`;
+
+      let session = sessionId ? sessionManager.getSession(sessionId) : undefined;
+      if (sessionId && !session) {
+        session = await sessionManager.getOrCreateSession(sessionId, repo);
+      }
+
       const record: TaskRecord = {
         id,
         instruction,
-        repo: repo ?? 'Kunall04/agent-checkout-gate',
+        sessionId,
+        sandboxUrl: session?.sandbox.url,
+        repo: repo ?? session?.repo ?? 'Kunall04/agent-checkout-gate',
         status: 'running',
         events: [],
         createdAt: Date.now(),
@@ -174,6 +266,8 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
           id,
           instruction,
           repo: record.repo,
+          sandboxUrl: session?.sandbox.url,
+          sandboxClient: session?.client,
           onEvent: (event) => {
             record.events.push(event);
             record.updatedAt = Date.now();

@@ -41,6 +41,8 @@ export interface ChatMsg {
 
 export interface SessionData extends SessionItem {
   repo?: string;
+  sandboxUrl?: string;
+  sandboxPort?: number;
   feed: ChatMsg[];
 }
 
@@ -55,6 +57,7 @@ const INITIAL_SESSIONS: SessionData[] = [
     status: 'done',
     statusColor: 'orange',
     time: '2m ago',
+    sandboxPort: 5001,
     repo: 'Kunall04/agent-checkout-gate',
     feed: [
       {
@@ -400,12 +403,14 @@ function ChatHeader({
   sessionTitle,
   activePr,
   isRunning,
+  sandboxPort,
 }: {
   isDark: boolean;
   setIsDark: (v: boolean) => void;
   sessionTitle: string;
   activePr?: string;
   isRunning: boolean;
+  sandboxPort?: number;
 }) {
   return (
     <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-4">
@@ -416,6 +421,12 @@ function ChatHeader({
         {activePr && (
           <span className="rounded-chip bg-green-tint px-2 py-0.5 font-mono text-[10.5px] font-medium text-green">
             PR {activePr}
+          </span>
+        )}
+        {sandboxPort && (
+          <span className="rounded-chip bg-accent-tint/40 px-2 py-0.5 font-mono text-[10px] font-medium text-accent flex items-center gap-1 border border-accent/20">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+            Sandbox :{sandboxPort}
           </span>
         )}
         <span
@@ -472,10 +483,36 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeSession.feed, isTyping]);
 
+  /* Fetch active sessions on mount to sync sandbox port info */
+  useEffect(() => {
+    fetch('/sessions')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.sessions) && data.sessions.length > 0) {
+          setSessions((prev) =>
+            prev.map((s) => {
+              const matched = data.sessions.find(
+                (bs: { id: string; sandbox?: { port: number; url: string } }) => bs.id === s.id,
+              );
+              if (matched?.sandbox) {
+                return {
+                  ...s,
+                  sandboxPort: matched.sandbox.port,
+                  sandboxUrl: matched.sandbox.url,
+                };
+              }
+              return s;
+            }),
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   /**
-   * Create a new blank session
+   * Create a new blank session (and provision sandbox on backend)
    */
-  const handleNewSession = () => {
+  const handleNewSession = async () => {
     const newId = `s-${Date.now()}`;
     const newSession: SessionData = {
       id: newId,
@@ -488,6 +525,67 @@ export default function App() {
     setActiveSessionId(newId);
     setIsRunning(false);
     setIsTyping(false);
+
+    try {
+      const res = await fetch('/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newId,
+          repo: 'Kunall04/agent-checkout-gate',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.session?.sandbox) {
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === newId
+                ? {
+                    ...s,
+                    sandboxUrl: data.session.sandbox.url,
+                    sandboxPort: data.session.sandbox.port,
+                  }
+                : s,
+            ),
+          );
+        }
+      }
+    } catch {
+      // Backend offline or mock fallback
+    }
+  };
+
+  /**
+   * Delete a session and destroy its sandbox container on backend
+   */
+  const handleDeleteSession = async (id: string) => {
+    try {
+      await fetch(`/sessions/${id}`, { method: 'DELETE' });
+    } catch {
+      // Ignore network errors
+    }
+
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.id !== id);
+      if (remaining.length === 0) {
+        const fallbackId = `s-${Date.now()}`;
+        setActiveSessionId(fallbackId);
+        return [
+          {
+            id: fallbackId,
+            title: 'New session',
+            status: 'idle',
+            time: 'Just now',
+            feed: [],
+          },
+        ];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(remaining[0]!.id);
+      }
+      return remaining;
+    });
   };
 
   /**
@@ -531,7 +629,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instruction: text,
-          repo: 'Kunall04/agent-checkout-gate',
+          repo: activeSession.repo ?? 'Kunall04/agent-checkout-gate',
+          sessionId: activeSessionId,
         }),
       });
 
@@ -541,6 +640,16 @@ export default function App() {
 
       const data = await res.json();
       const taskId = data.id;
+
+      if (data.task?.sandboxUrl) {
+        const portMatch = data.task.sandboxUrl.match(/:(\d+)$/);
+        const port = portMatch ? Number(portMatch[1]) : undefined;
+        if (port) {
+          setSessions((prev) =>
+            prev.map((s) => (s.id === activeSessionId ? { ...s, sandboxPort: port } : s)),
+          );
+        }
+      }
 
       if (!taskId) {
         throw new Error('No task ID returned');
@@ -821,6 +930,7 @@ export default function App() {
         activeSession={activeSessionId}
         onSelectSession={(id) => setActiveSessionId(id)}
         onNewSession={handleNewSession}
+        onDeleteSession={handleDeleteSession}
       />
 
       {/* ── Center chat column ── */}
@@ -831,6 +941,7 @@ export default function App() {
           sessionTitle={activeSession.title}
           activePr={activeSession.pr}
           isRunning={isRunning && activeSession.status === 'running'}
+          sandboxPort={activeSession.sandboxPort}
         />
 
         {/* Feed */}

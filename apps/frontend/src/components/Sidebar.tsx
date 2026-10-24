@@ -10,6 +10,7 @@ export interface SessionItem {
   status: 'running' | 'done' | 'idle';
   statusColor?: 'orange' | 'green' | 'blue' | 'gray';
   time: string;
+  sandboxPort?: number;
 }
 
 const NAV_ITEMS = [
@@ -43,11 +44,13 @@ export default function Sidebar({
   activeSession = 's1',
   onSelectSession,
   onNewSession,
+  onDeleteSession,
 }: {
   sessions?: SessionItem[];
   activeSession?: string;
   onSelectSession?: (id: string) => void;
   onNewSession?: () => void;
+  onDeleteSession?: (id: string) => void;
 }) {
   const [activeNav, setActiveNav] = useState<string>('plus');
 
@@ -146,23 +149,45 @@ export default function Sidebar({
                   >
                     {s.title}
                   </span>
-                  {s.statusColor && (
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        s.statusColor === 'orange'
-                          ? 'bg-amber-500'
-                          : s.statusColor === 'green'
-                            ? 'bg-green'
-                            : s.statusColor === 'blue'
-                              ? 'bg-accent'
-                              : 'bg-ink-3/40'
-                      }`}
-                    />
-                  )}
+                  <div className="flex items-center gap-1">
+                    {onDeleteSession && (
+                      <span
+                        role="button"
+                        title="Delete session"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteSession(s.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-ink-3 hover:text-red hover:bg-hover transition-opacity"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </span>
+                    )}
+                    {s.statusColor && (
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          s.statusColor === 'orange'
+                            ? 'bg-amber-500'
+                            : s.statusColor === 'green'
+                              ? 'bg-green'
+                              : s.statusColor === 'blue'
+                                ? 'bg-accent'
+                                : 'bg-ink-3/40'
+                        }`}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-[11px] text-ink-3">
                   {s.subtitle && <span className="truncate">{s.subtitle}</span>}
+                  {s.sandboxPort && (
+                    <span className="font-mono text-[9.5px] text-accent/80">
+                      :{s.sandboxPort}
+                    </span>
+                  )}
                   {s.pr && (
                     <span className="flex items-center gap-0.5 font-mono text-[10px] text-accent">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

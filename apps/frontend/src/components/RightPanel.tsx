@@ -109,6 +109,13 @@ function PRView({
   repo?: string;
   onApprove?: () => void;
 }) {
+  const commits = [
+    { sha: 'a3f2b1c', msg: 'feat(github): configure bot user ID attribution' },
+    { sha: 'd9e4f5a', msg: 'fix(tests): add ORION_VERIFICATION.md' },
+    { sha: '7c1a2b3', msg: 'test: ensure sandbox runner exits cleanly' },
+    { sha: 'e6d0f2a', msg: 'chore: bump Groq SDK to 0.8.0' },
+  ];
+
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* PR header */}
@@ -124,7 +131,7 @@ function PRView({
         <p className="text-[11.5px] text-ink-3">
           <span className="font-mono text-accent">{pr}</span>
           {' '}· <span className="font-mono">orion-coding-agent[bot]</span> wants to merge
-          {' '}<span className="font-mono text-ink-2">commits</span> into <span className="font-mono text-ink-2">main</span>
+          {' '}<span className="font-mono text-ink-2">{commits.length} commits</span> into <span className="font-mono text-ink-2">main</span>
         </p>
       </div>
 
@@ -133,14 +140,9 @@ function PRView({
 
       {/* Commit list */}
       <div className="flex flex-col gap-1">
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Commits</p>
-        {[
-          { sha: 'a3f2b1c', msg: 'feat(github): configure bot user ID attribution' },
-          { sha: 'd9e4f5a', msg: 'fix(tests): add ORION_VERIFICATION.md' },
-          { sha: '7c1a2b3', msg: 'test: ensure sandbox runner exits cleanly' },
-          { sha: 'e6d0f2a', msg: 'chore: bump Groq SDK to 0.8.0' },
-        ].map((c) => (
-          <div key={c.sha} className="flex items-center gap-2 rounded-control px-2.5 py-1.5 hover:bg-hover">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Commits ({commits.length})</p>
+        {commits.map((c) => (
+          <div key={c.sha} className="flex items-center gap-2 rounded-control px-2.5 py-1.5 hover:bg-hover transition-colors">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-ink-3">
               <circle cx="12" cy="12" r="3" /><line x1="3" y1="12" x2="9" y2="12" /><line x1="15" y1="12" x2="21" y2="12" />
             </svg>
@@ -233,6 +235,8 @@ export default function RightPanel({
     setWidth((prev) => (prev > 520 ? 400 : 660));
   };
 
+  const visibleTabs = tab === 'Terminal' ? TABS : TABS.filter((t) => t !== 'Terminal');
+
   return (
     <aside
       style={{ width }}
@@ -249,16 +253,16 @@ export default function RightPanel({
       >
         {/* Subtle pill grip handle indicator */}
         <div
-          className={`h-8 w-1 rounded-full transition-all ${
-            isResizing ? 'bg-accent scale-y-125' : 'bg-line-strong group-hover:bg-accent group-hover:h-10'
+          className={`h-8 w-1 rounded-full transition-all opacity-0 group-hover:opacity-100 ${
+            isResizing ? 'bg-accent scale-y-125 opacity-100' : 'bg-accent group-hover:h-10'
           }`}
         />
       </div>
 
       {/* Tab bar (Matching Image 2: [Progress] [Changes] [PR #142] [</> Editor] [+]) */}
-      <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-3">
-        <div className="flex items-center gap-1">
-          {TABS.map((t) => {
+      <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-3 gap-1">
+        <div className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar">
+          {visibleTabs.map((t) => {
             const config = TAB_CONFIG[t];
             const isActive = tab === t;
             const tabLabel = t === 'PR' ? (pr ? `PR ${pr}` : 'PR') : config.label;
@@ -267,7 +271,7 @@ export default function RightPanel({
                 key={t}
                 type="button"
                 onClick={() => handleTabClick(t)}
-                className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12px] font-medium transition-colors duration-100 ${
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-[12px] font-medium transition-colors duration-100 ${
                   isActive
                     ? 'bg-surface text-ink shadow-btn'
                     : 'text-ink-3 hover:bg-hover hover:text-ink-2'
@@ -285,16 +289,18 @@ export default function RightPanel({
           })}
 
           {/* Plus Add Tab Button */}
-          <button
-            type="button"
-            title="Switch to Terminal"
-            onClick={() => handleTabClick('Terminal')}
-            className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+          {tab !== 'Terminal' && (
+            <button
+              type="button"
+              title="Open Terminal"
+              onClick={() => handleTabClick('Terminal')}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Width toggle button */}
@@ -302,7 +308,7 @@ export default function RightPanel({
           type="button"
           onClick={handleDoubleClick}
           title={width > 520 ? 'Compact panel' : 'Expand panel'}
-          className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover hover:text-ink"
         >
           <svg
             width="13"

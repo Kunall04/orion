@@ -260,7 +260,7 @@ export default function ApprovalCard({
 
   if (sent) {
     return (
-      <div className="flex w-full max-w-80 items-center gap-3" style={{ animation: "pop-in 260ms cubic-bezier(0.23,1,0.32,1) both" }}>
+      <div className="flex w-full items-center gap-3" style={{ animation: "pop-in 260ms cubic-bezier(0.23,1,0.32,1) both" }}>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-green-tint py-1 pr-2.5 pl-1 text-[12.5px] font-medium text-green">
           <span className="flex size-4.5 items-center justify-center rounded-full bg-green text-white">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
@@ -277,8 +277,8 @@ export default function ApprovalCard({
   }
 
   return (
-    <div className="w-full max-w-80">
-      <div className="relative overflow-hidden rounded-card bg-surface shadow-card" style={{ animation: "fade-up 380ms cubic-bezier(0.23,1,0.32,1) both" }}>
+    <div className="w-full">
+      <div className="relative overflow-hidden rounded-card bg-surface shadow-card border border-line" style={{ animation: "fade-up 380ms cubic-bezier(0.23,1,0.32,1) both" }}>
         <button
           type="button"
           aria-label="Dismiss"

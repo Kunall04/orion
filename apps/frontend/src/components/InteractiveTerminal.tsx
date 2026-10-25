@@ -27,6 +27,22 @@ export default function InteractiveTerminal() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [lines]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ command: string; output: string }>;
+      if (!customEvent.detail) return;
+      const { command, output } = customEvent.detail;
+      setLines((prev) => [
+        ...prev,
+        { id: `in-${Date.now()}`, type: 'input', text: command },
+        { id: `out-${Date.now()}`, type: 'output', text: output },
+      ]);
+    };
+
+    window.addEventListener('orion:terminal-command', handler);
+    return () => window.removeEventListener('orion:terminal-command', handler);
+  }, []);
+
   const handleCommand = async (cmd: string) => {
     const trimmed = cmd.trim();
     if (!trimmed) return;

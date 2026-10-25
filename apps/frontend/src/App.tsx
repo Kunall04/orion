@@ -5,6 +5,7 @@ import PromptBar from './components/PromptBar';
 import ThinkingState from './components/ThinkingState';
 import ToolChips, { type ToolStep, type ToolDiff } from './components/ToolChips';
 import OrionLogo from './components/OrionLogo';
+import ToastContainer, { showToast } from './components/Toast';
 import type { FileDiffItem } from './components/CodeDiffViewer';
 import { type TabFile, DEFAULT_FILES } from './components/VSCodeIDE';
 
@@ -272,9 +273,23 @@ function UserBubble({ text, repo }: { text: string; repo?: string }) {
   );
 }
 
-function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
+function AgentTurnBubble({
+  msg,
+  onReviewWithOrion,
+  onAnalyze,
+  onRunPill,
+  onDiffChipClick,
+  onRetry,
+}: {
+  msg: ChatMsg;
+  onReviewWithOrion?: () => void;
+  onAnalyze?: () => void;
+  onRunPill?: (label: string) => void;
+  onDiffChipClick?: (file: string) => void;
+  onRetry?: (msg: ChatMsg) => void;
+}) {
   return (
-    <div className="flex items-start gap-2.5" style={{ animation: 'fade-up 350ms cubic-bezier(0.23,1,0.32,1) both' }}>
+    <div className="group flex items-start gap-2.5" style={{ animation: 'fade-up 350ms cubic-bezier(0.23,1,0.32,1) both' }}>
       <OrionLogo size={20} badge className="mt-0.5 shrink-0" />
       <div className="flex min-w-0 max-w-[540px] flex-1 flex-col gap-2.5">
         {/* Thinking row */}
@@ -290,7 +305,11 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
 
         {/* Real tool chips */}
         {msg.toolSteps && msg.toolSteps.length > 0 && (
-          <ToolChips steps={msg.toolSteps} diffs={msg.diffs || []} />
+          <ToolChips
+            steps={msg.toolSteps}
+            diffs={msg.diffs || []}
+            onDiffChipClick={onDiffChipClick}
+          />
         )}
 
         {/* Action PR Card (Image 2) */}
@@ -315,14 +334,18 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  className="flex items-center gap-1 rounded-control bg-field px-2.5 py-1 text-[11.5px] font-medium text-ink hover:bg-hover transition-colors shadow-hairline"
+                  onClick={onReviewWithOrion}
+                  title="Open PR approval review"
+                  className="flex items-center gap-1 rounded-control bg-field px-2.5 py-1 text-[11.5px] font-medium text-ink hover:bg-hover transition-colors shadow-hairline cursor-pointer active:scale-95"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   Review with Orion
                 </button>
                 <button
                   type="button"
-                  className="rounded-control bg-accent px-3 py-1 text-[11.5px] font-medium text-white hover:bg-accent/90 transition-colors shadow-btn"
+                  onClick={onAnalyze}
+                  title="Analyze code diffs in right panel"
+                  className="rounded-control bg-accent px-3 py-1 text-[11.5px] font-medium text-white hover:bg-accent/90 transition-colors shadow-btn cursor-pointer active:scale-95"
                 >
                   Analyze
                 </button>
@@ -343,7 +366,9 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
           <div className="flex items-center gap-2 pt-0.5">
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-1.5 text-[12px] font-medium text-ink shadow-btn hover:bg-hover transition-colors"
+              onClick={() => onRunPill?.(msg.actionPill!.label)}
+              title={`Trigger: ${msg.actionPill.label}`}
+              className="flex items-center gap-1.5 rounded-control border border-line bg-surface px-3 py-1.5 text-[12px] font-medium text-ink shadow-btn hover:bg-hover transition-colors cursor-pointer active:scale-95"
             >
               <span>{msg.actionPill.label}</span>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -360,9 +385,47 @@ function AgentTurnBubble({ msg }: { msg: ChatMsg }) {
 
         {/* Action Required Banner (Image 2: ● Action required: Review PR) */}
         {msg.actionRequiredBanner && (
-          <div className="flex items-center gap-2 pt-1 font-mono text-[11.5px] text-amber-500 font-medium">
+          <div
+            onClick={onReviewWithOrion}
+            className="flex items-center gap-2 pt-1 font-mono text-[11.5px] text-amber-500 font-medium cursor-pointer hover:underline"
+          >
             <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
             <span>{msg.actionRequiredBanner}</span>
+          </div>
+        )}
+
+        {/* Copy / Retry Actions bar on hover */}
+        {msg.text && (
+          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 text-ink-3">
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(msg.text || '');
+                showToast('Copied message to clipboard', 'success');
+              }}
+              title="Copy message"
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink text-[11px] transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span>Copy</span>
+            </button>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={() => onRetry(msg)}
+                title="Retry this step"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink text-[11px] transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+                <span>Retry</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -409,6 +472,9 @@ function ChatHeader({
   activePr,
   isRunning,
   sandboxPort,
+  onPrClick,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: {
   isDark: boolean;
   setIsDark: (v: boolean) => void;
@@ -416,17 +482,37 @@ function ChatHeader({
   activePr?: string;
   isRunning: boolean;
   sandboxPort?: number;
+  onPrClick?: () => void;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
 }) {
   return (
     <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-4">
       <div className="flex items-center gap-2">
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title="Expand sidebar"
+            className="rounded p-1 text-ink-3 hover:bg-hover hover:text-ink transition-colors mr-1"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+        )}
         <span className="max-w-[280px] truncate text-[13px] font-semibold text-ink">
           {sessionTitle}
         </span>
         {activePr && (
-          <span className="rounded-chip bg-green-tint px-2 py-0.5 font-mono text-[10.5px] font-medium text-green">
+          <button
+            type="button"
+            onClick={onPrClick}
+            title="View PR review and approvals"
+            className="rounded-chip bg-green-tint px-2 py-0.5 font-mono text-[10.5px] font-medium text-green hover:ring-1 hover:ring-green transition-all cursor-pointer active:scale-95"
+          >
             PR {activePr}
-          </span>
+          </button>
         )}
         {sandboxPort && (
           <span className="rounded-chip bg-accent-tint/40 px-2 py-0.5 font-mono text-[10px] font-medium text-accent flex items-center gap-1 border border-accent/20">
@@ -475,9 +561,63 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<PanelTab>('Editor');
   const [isTyping, setIsTyping] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0]!;
+
+  const handleStop = () => {
+    const es = eventSourcesRef.current.get(activeSessionId);
+    if (es) {
+      es.close();
+      eventSourcesRef.current.delete(activeSessionId);
+    }
+    setSessions((prev) =>
+      prev.map((s) => (s.id === activeSessionId ? { ...s, status: 'idle' } : s)),
+    );
+    setIsRunning(false);
+    showToast('Task execution stopped', 'info');
+  };
+
+  const handleApprovePR = () => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? {
+              ...s,
+              subtitle: 'PR approved & merged',
+              statusColor: 'green',
+              feed: [
+                ...s.feed,
+                {
+                  id: `agent-approve-${Date.now()}`,
+                  role: 'agent',
+                  text: `Pull Request ${s.pr || '#142'} has been approved and merged into main. Sandbox verification confirmed.`,
+                },
+              ],
+            }
+          : s,
+      ),
+    );
+    showToast(`PR ${activeSession.pr || '#142'} approved and merged!`, 'success');
+  };
+
+  const handleRetryTask = (msg: ChatMsg) => {
+    if (msg.text) {
+      handleSend(`Retry: ${msg.text.slice(0, 80)}`);
+    } else {
+      handleSend('npm test');
+    }
+  };
+
+  const activeSessionProgressSteps = activeSession.feed
+    .flatMap((m) => m.toolSteps || [])
+    .map((ts) => ({
+      title: ts.label,
+      desc: ts.detail?.[0]?.text || ts.chip,
+      time: ts.chip,
+    }));
 
   /* Apply dark mode */
   useEffect(() => {
@@ -664,6 +804,7 @@ export default function App() {
       }
 
       const eventSource = new EventSource(`/tasks/${taskId}/events`);
+      eventSourcesRef.current.set(activeSessionId, eventSource);
       let accumulatedToolSteps: ToolStep[] = [];
 
       eventSource.onmessage = (e) => {
@@ -842,12 +983,14 @@ export default function App() {
                   : s,
               ),
             );
+            eventSourcesRef.current.delete(activeSessionId);
             eventSource.close();
           } else if (event.type === 'done') {
             setIsRunning(false);
             setSessions((prev) =>
               prev.map((s) => (s.id === activeSessionId ? { ...s, status: 'done' } : s)),
             );
+            eventSourcesRef.current.delete(activeSessionId);
             eventSource.close();
           }
         } catch (err) {
@@ -857,6 +1000,7 @@ export default function App() {
 
       eventSource.onerror = () => {
         setIsRunning(false);
+        eventSourcesRef.current.delete(activeSessionId);
         eventSource.close();
       };
     } catch (err) {
@@ -1022,14 +1166,19 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-page text-ink">
+      <ToastContainer />
+
       {/* ── Left sidebar ── */}
-      <Sidebar
-        sessions={sessions}
-        activeSession={activeSessionId}
-        onSelectSession={(id) => setActiveSessionId(id)}
-        onNewSession={handleNewSession}
-        onDeleteSession={handleDeleteSession}
-      />
+      <div className={`transition-all duration-200 overflow-hidden flex shrink-0 ${sidebarCollapsed ? 'w-0 border-r-0' : 'w-[230px]'}`}>
+        <Sidebar
+          sessions={sessions}
+          activeSession={activeSessionId}
+          onSelectSession={(id) => setActiveSessionId(id)}
+          onNewSession={handleNewSession}
+          onDeleteSession={handleDeleteSession}
+          onCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        />
+      </div>
 
       {/* ── Center chat column ── */}
       <main className="flex min-w-0 flex-1 flex-col">
@@ -1040,6 +1189,9 @@ export default function App() {
           activePr={activeSession.pr}
           isRunning={isRunning && activeSession.status === 'running'}
           sandboxPort={activeSession.sandboxPort}
+          onPrClick={() => setRightPanelTab('PR')}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
         />
 
         {/* Feed */}
@@ -1050,7 +1202,18 @@ export default function App() {
             <div className="mx-auto flex max-w-[600px] flex-col gap-5 px-4 py-6">
               {activeSession.feed.map((msg) => {
                 if (msg.role === 'user') return <UserBubble key={msg.id} text={msg.text!} repo={msg.repo} />;
-                if (msg.role === 'agent') return <AgentTurnBubble key={msg.id} msg={msg} />;
+                if (msg.role === 'agent')
+                  return (
+                    <AgentTurnBubble
+                      key={msg.id}
+                      msg={msg}
+                      onReviewWithOrion={() => setRightPanelTab('PR')}
+                      onAnalyze={() => setRightPanelTab('Changes')}
+                      onRunPill={(label) => handleSend(label)}
+                      onDiffChipClick={() => setRightPanelTab('Changes')}
+                      onRetry={handleRetryTask}
+                    />
+                  );
                 return null;
               })}
 
@@ -1062,7 +1225,12 @@ export default function App() {
         {/* Prompt bar — pinned bottom */}
         <div className="shrink-0 border-t border-line bg-page px-4 py-3">
           <div className="mx-auto max-w-[600px]">
-            <PromptBar onSend={handleSend} disabled={isRunning && activeSession.status === 'running'} />
+            <PromptBar
+              onSend={handleSend}
+              onStop={handleStop}
+              disabled={isRunning && activeSession.status === 'running'}
+              repo={activeSession.repo}
+            />
           </div>
         </div>
       </main>
@@ -1073,6 +1241,11 @@ export default function App() {
         files={activeSession.files}
         activeTab={rightPanelTab}
         onTabChange={setRightPanelTab}
+        pr={activeSession.pr}
+        sessionTitle={activeSession.title}
+        repo={activeSession.repo}
+        progressSteps={activeSessionProgressSteps}
+        onApprove={handleApprovePR}
       />
     </div>
   );

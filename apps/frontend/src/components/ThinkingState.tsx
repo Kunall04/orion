@@ -15,8 +15,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 const STAGES = [800, 600, 1800, 2600, 1600];
 
-function useSequence(steps: number[]) {
-  const [stage, setStage] = useState(0);
+function useSequence(steps: number[], initialStage = 0) {
+  const [stage, setStage] = useState(initialStage);
   useEffect(() => {
     if (stage >= steps.length - 1) return;
     const t = setTimeout(() => setStage((s) => s + 1), steps[stage]);
@@ -107,7 +107,7 @@ export default function ThinkingState({
   /** override the header glyph (defaults to the sparkle) */
   icon?: ReactNode;
 }) {
-  const stage = useSequence(STAGES);
+  const stage = useSequence(STAGES, done ? STAGES.length - 1 : 0);
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const base = (VARIANTS[variant] ?? VARIANTS.Steps)!;

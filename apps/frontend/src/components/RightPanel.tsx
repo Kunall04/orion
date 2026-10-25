@@ -5,9 +5,9 @@ import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
 import ApprovalCard from './ApprovalCard';
 
-export type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor';
+export type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor' | 'Terminal';
 
-const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor'];
+const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor', 'Terminal'];
 
 const TAB_CONFIG: Record<
   PanelTab,
@@ -30,7 +30,7 @@ const TAB_CONFIG: Record<
     ),
   },
   PR: {
-    label: 'PR #142',
+    label: 'PR',
     icon: (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
@@ -40,10 +40,18 @@ const TAB_CONFIG: Record<
   Editor: {
     label: '</> Editor',
   },
+  Terminal: {
+    label: 'Terminal',
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    ),
+  },
 };
 
-function ProgressView() {
-  const steps = [
+function ProgressView({ steps }: { steps?: Array<{ title: string; desc: string; time?: string }> }) {
+  const defaultSteps = [
     { title: 'Task Initialized', desc: 'Received instruction: "Fix checkout rate-limit test and add bot commit author"', time: '0.1s' },
     { title: 'Sandbox Bootstrapped', desc: 'Started Docker microcontainer orion-box (port 5001)', time: '0.4s' },
     { title: 'Cloned Repository', desc: 'git clone https://github.com/Kunall04/agent-checkout-gate (workspace: /workspace)', time: '0.8s' },
@@ -57,6 +65,8 @@ function ProgressView() {
     { title: 'Opened Pull Request #142', desc: 'Merged into main branch ready for human-in-the-loop signoff', time: '0.5s' },
   ];
 
+  const renderSteps = steps && steps.length > 0 ? steps : defaultSteps;
+
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between border-b border-line pb-2.5">
@@ -65,11 +75,11 @@ function ProgressView() {
           <h4 className="text-[13px] font-semibold text-ink">Agent Execution Progress</h4>
         </div>
         <span className="rounded bg-surface px-2 py-0.5 font-mono text-[10px] text-ink-3 shadow-hairline">
-          Total: 5.4s
+          Total: {renderSteps.length} steps
         </span>
       </div>
       <div className="flex flex-col gap-1.5 pt-1">
-        {steps.map((s, idx) => (
+        {renderSteps.map((s, idx) => (
           <div key={idx} className="flex items-start gap-2.5 rounded-control p-2 hover:bg-hover transition-colors">
             <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green/15 text-[10px] font-bold text-green">
               ✓
@@ -77,7 +87,7 @@ function ProgressView() {
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-medium text-ink">{s.title}</span>
-                <span className="font-mono text-[10px] text-ink-3">{s.time}</span>
+                {s.time && <span className="font-mono text-[10px] text-ink-3">{s.time}</span>}
               </div>
               <p className="font-mono text-[11px] text-ink-3 leading-snug break-words">{s.desc}</p>
             </div>
@@ -88,7 +98,17 @@ function ProgressView() {
   );
 }
 
-function PRView() {
+function PRView({
+  pr = '#142',
+  sessionTitle = 'Fix checkout rate-limit test and add bot commit author',
+  repo = 'agent-checkout-gate',
+  onApprove,
+}: {
+  pr?: string;
+  sessionTitle?: string;
+  repo?: string;
+  onApprove?: () => void;
+}) {
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* PR header */}
@@ -98,18 +118,18 @@ function PRView() {
             Open
           </span>
           <h3 className="text-[13.5px] font-semibold leading-snug text-ink">
-            Fix checkout rate-limit test and add bot commit author
+            {sessionTitle}
           </h3>
         </div>
         <p className="text-[11.5px] text-ink-3">
-          <span className="font-mono text-accent">#142</span>
+          <span className="font-mono text-accent">{pr}</span>
           {' '}· <span className="font-mono">orion-coding-agent[bot]</span> wants to merge
-          {' '}<span className="font-mono text-ink-2">4 commits</span> into <span className="font-mono text-ink-2">main</span>
+          {' '}<span className="font-mono text-ink-2">commits</span> into <span className="font-mono text-ink-2">main</span>
         </p>
       </div>
 
       {/* Approval card */}
-      <ApprovalCard />
+      <ApprovalCard onSubmitted={() => onApprove?.()} />
 
       {/* Commit list */}
       <div className="flex flex-col gap-1">
@@ -141,6 +161,11 @@ export default function RightPanel({
   files,
   activeTab,
   onTabChange,
+  pr,
+  sessionTitle,
+  repo,
+  progressSteps,
+  onApprove,
 }: {
   initialWidth?: number;
   minWidth?: number;
@@ -149,6 +174,11 @@ export default function RightPanel({
   files?: TabFile[];
   activeTab?: PanelTab;
   onTabChange?: (tab: PanelTab) => void;
+  pr?: string;
+  sessionTitle?: string;
+  repo?: string;
+  progressSteps?: Array<{ title: string; desc: string; time?: string }>;
+  onApprove?: () => void;
 }) {
   const [tab, setTab] = useState<PanelTab>(activeTab ?? 'Editor');
   const [width, setWidth] = useState(initialWidth);
@@ -231,6 +261,7 @@ export default function RightPanel({
           {TABS.map((t) => {
             const config = TAB_CONFIG[t];
             const isActive = tab === t;
+            const tabLabel = t === 'PR' ? (pr ? `PR ${pr}` : 'PR') : config.label;
             return (
               <button
                 key={t}
@@ -243,7 +274,7 @@ export default function RightPanel({
                 }`}
               >
                 {config.icon && <span className={isActive ? 'text-ink' : 'text-ink-3'}>{config.icon}</span>}
-                <span>{config.label}</span>
+                <span>{tabLabel}</span>
                 {t === 'Changes' && diffs && diffs.length > 0 && (
                   <span className="ml-0.5 rounded-full bg-green/20 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-green">
                     {diffs.length}
@@ -256,7 +287,8 @@ export default function RightPanel({
           {/* Plus Add Tab Button */}
           <button
             type="button"
-            title="Add tab"
+            title="Switch to Terminal"
+            onClick={() => handleTabClick('Terminal')}
             className="flex h-7 w-7 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -295,7 +327,7 @@ export default function RightPanel({
       <div className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
         {tab === 'Progress' && (
           <div className="h-full overflow-y-auto">
-            <ProgressView />
+            <ProgressView steps={progressSteps} />
           </div>
         )}
         {tab === 'Changes' && (
@@ -305,7 +337,12 @@ export default function RightPanel({
         )}
         {tab === 'PR' && (
           <div className="h-full overflow-y-auto">
-            <PRView />
+            <PRView pr={pr} sessionTitle={sessionTitle} repo={repo} onApprove={onApprove} />
+          </div>
+        )}
+        {tab === 'Terminal' && (
+          <div className="h-full overflow-y-auto">
+            <InteractiveTerminal />
           </div>
         )}
         <div className={`h-full flex flex-col ${tab === 'Editor' ? 'flex' : 'hidden'}`}>

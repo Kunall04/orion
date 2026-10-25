@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Sidebar, { type SessionItem } from './components/Sidebar';
-import RightPanel from './components/RightPanel';
+import RightPanel, { type PanelTab } from './components/RightPanel';
 import PromptBar from './components/PromptBar';
 import ThinkingState from './components/ThinkingState';
 import ToolChips, { type ToolStep, type ToolDiff } from './components/ToolChips';
 import OrionLogo from './components/OrionLogo';
+import type { FileDiffItem } from './components/CodeDiffViewer';
+import { type TabFile, DEFAULT_FILES } from './components/VSCodeIDE';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ThinkingData {
@@ -44,6 +46,8 @@ export interface SessionData extends SessionItem {
   sandboxUrl?: string;
   sandboxPort?: number;
   feed: ChatMsg[];
+  diffs?: FileDiffItem[];
+  files?: TabFile[];
 }
 
 /* ─── Initial Sessions (Matching Reference Image 2) ───────── */
@@ -59,6 +63,7 @@ const INITIAL_SESSIONS: SessionData[] = [
     time: '2m ago',
     sandboxPort: 5001,
     repo: 'Kunall04/agent-checkout-gate',
+    files: DEFAULT_FILES,
     feed: [
       {
         id: 'msg-1',
@@ -467,6 +472,7 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [sessions, setSessions] = useState<SessionData[]>(INITIAL_SESSIONS);
   const [activeSessionId, setActiveSessionId] = useState<string>('s1');
+  const [rightPanelTab, setRightPanelTab] = useState<PanelTab>('Editor');
   const [isTyping, setIsTyping] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -520,6 +526,8 @@ export default function App() {
       status: 'idle',
       time: 'Just now',
       feed: [],
+      files: DEFAULT_FILES,
+      diffs: [],
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newId);
@@ -697,22 +705,108 @@ export default function App() {
             };
             accumulatedToolSteps = [...accumulatedToolSteps, newStep];
 
+            let fileDiff: FileDiffItem | null = null;
+            let updatedFileContent: { path: string; content: string } | null = null;
+
+            if (event.name === 'update_file' && event.args?.path) {
+              const filePath = String(event.args.path);
+              const oldStr = String(event.args.old_str ?? '');
+              const newStr = String(event.args.new_str ?? '');
+              const oldLines = oldStr.split('\n');
+              const newLines = newStr.split('\n');
+
+              fileDiff = {
+                file: filePath,
+                add: newLines.length,
+                del: oldLines.length,
+                status: 'modified',
+                hunks: [
+                  {
+                    header: `@@ update ${filePath} @@`,
+                    lines: [
+                      ...oldLines.map((l, i) => ({ oldNo: i + 1, type: 'del' as const, text: `- ${l}` })),
+                      ...newLines.map((l, i) => ({ newNo: i + 1, type: 'add' as const, text: `+ ${l}` })),
+                    ],
+                  },
+                ],
+              };
+              updatedFileContent = { path: filePath, content: newStr };
+            } else if (event.name === 'write_file' && event.args?.path) {
+              const filePath = String(event.args.path);
+              const content = String(event.args.content ?? '');
+              const contentLines = content.split('\n');
+
+              fileDiff = {
+                file: filePath,
+                add: contentLines.length,
+                del: 0,
+                status: 'added',
+                hunks: [
+                  {
+                    header: `@@ new file ${filePath} @@`,
+                    lines: contentLines.map((l, i) => ({ newNo: i + 1, type: 'add' as const, text: `+ ${l}` })),
+                  },
+                ],
+              };
+              updatedFileContent = { path: filePath, content };
+            }
+
+            if (fileDiff) {
+              setRightPanelTab('Changes');
+            }
+
             setSessions((prev) =>
-              prev.map((s) =>
-                s.id === activeSessionId
-                  ? {
-                      ...s,
-                      feed: s.feed.map((msg) =>
-                        msg.id === agentTurnId
-                          ? {
-                              ...msg,
-                              toolSteps: accumulatedToolSteps,
-                            }
-                          : msg,
-                      ),
-                    }
-                  : s,
-              ),
+              prev.map((s) => {
+                if (s.id !== activeSessionId) return s;
+
+                let nextDiffs = s.diffs || [];
+                let nextFiles = s.files || DEFAULT_FILES;
+
+                if (fileDiff) {
+                  nextDiffs = [fileDiff, ...nextDiffs.filter((d) => d.file !== fileDiff!.file)];
+                }
+
+                if (updatedFileContent) {
+                  const targetPath = updatedFileContent.path;
+                  const targetName = targetPath.split('/').pop() || targetPath;
+                  const exists = nextFiles.some((f) => f.path === targetPath || f.name === targetName);
+
+                  if (exists) {
+                    nextFiles = nextFiles.map((f) =>
+                      f.path === targetPath || f.name === targetName
+                        ? { ...f, content: updatedFileContent!.content, modified: true }
+                        : f,
+                    );
+                  } else {
+                    const ext = targetPath.split('.').pop() || 'plaintext';
+                    const lang = ext === 'ts' || ext === 'tsx' ? 'typescript' : ext === 'js' ? 'javascript' : ext;
+                    nextFiles = [
+                      ...nextFiles,
+                      {
+                        name: targetName,
+                        path: targetPath,
+                        lang,
+                        content: updatedFileContent!.content,
+                        modified: true,
+                      },
+                    ];
+                  }
+                }
+
+                return {
+                  ...s,
+                  diffs: nextDiffs,
+                  files: nextFiles,
+                  feed: s.feed.map((msg) =>
+                    msg.id === agentTurnId
+                      ? {
+                          ...msg,
+                          toolSteps: accumulatedToolSteps,
+                        }
+                      : msg,
+                  ),
+                };
+              }),
             );
           } else if (event.type === 'tool_result') {
             if (event.name === 'create_pull_request' && event.result) {
@@ -884,6 +978,10 @@ export default function App() {
         }),
       );
 
+      if (parsed.cmd === 'git diff') {
+        setRightPanelTab('Changes');
+      }
+
       setTimeout(() => {
         setSessions((prev) =>
           prev.map((s) =>
@@ -970,7 +1068,12 @@ export default function App() {
       </main>
 
       {/* ── Right panel ── */}
-      <RightPanel />
+      <RightPanel
+        diffs={activeSession.diffs}
+        files={activeSession.files}
+        activeTab={rightPanelTab}
+        onTabChange={setRightPanelTab}
+      />
     </div>
   );
 }

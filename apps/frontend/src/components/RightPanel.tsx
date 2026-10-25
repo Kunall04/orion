@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import VSCodeIDE from './VSCodeIDE';
-import CodeDiffViewer from './CodeDiffViewer';
+import VSCodeIDE, { type TabFile } from './VSCodeIDE';
+import CodeDiffViewer, { type FileDiffItem } from './CodeDiffViewer';
 import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
 import ApprovalCard from './ApprovalCard';
 
-type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor';
+export type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor';
 
 const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor'];
 
@@ -137,17 +137,36 @@ export default function RightPanel({
   initialWidth = 460,
   minWidth = 300,
   maxWidth = 860,
+  diffs,
+  files,
+  activeTab,
+  onTabChange,
 }: {
   initialWidth?: number;
   minWidth?: number;
   maxWidth?: number;
+  diffs?: FileDiffItem[];
+  files?: TabFile[];
+  activeTab?: PanelTab;
+  onTabChange?: (tab: PanelTab) => void;
 }) {
-  const [tab, setTab] = useState<PanelTab>('Editor');
+  const [tab, setTab] = useState<PanelTab>(activeTab ?? 'Editor');
   const [width, setWidth] = useState(initialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const isDraggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(initialWidth);
+
+  useEffect(() => {
+    if (activeTab) {
+      setTab(activeTab);
+    }
+  }, [activeTab]);
+
+  const handleTabClick = (nextTab: PanelTab) => {
+    setTab(nextTab);
+    onTabChange?.(nextTab);
+  };
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -216,7 +235,7 @@ export default function RightPanel({
               <button
                 key={t}
                 type="button"
-                onClick={() => setTab(t)}
+                onClick={() => handleTabClick(t)}
                 className={`flex h-8 items-center gap-1.5 rounded-control px-2.5 text-[12px] font-medium transition-colors duration-100 ${
                   isActive
                     ? 'bg-surface text-ink shadow-btn'
@@ -225,6 +244,11 @@ export default function RightPanel({
               >
                 {config.icon && <span className={isActive ? 'text-ink' : 'text-ink-3'}>{config.icon}</span>}
                 <span>{config.label}</span>
+                {t === 'Changes' && diffs && diffs.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-green/20 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-green">
+                    {diffs.length}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -268,11 +292,25 @@ export default function RightPanel({
       </div>
 
       {/* Tab content */}
-      <div className={`min-h-0 flex-1 ${tab === 'Editor' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-        {tab === 'Progress' && <ProgressView />}
-        {tab === 'Changes' && <CodeDiffViewer />}
-        {tab === 'PR' && <PRView />}
-        {tab === 'Editor' && <VSCodeIDE />}
+      <div className="relative min-h-0 flex-1 overflow-hidden flex flex-col">
+        {tab === 'Progress' && (
+          <div className="h-full overflow-y-auto">
+            <ProgressView />
+          </div>
+        )}
+        {tab === 'Changes' && (
+          <div className="h-full overflow-y-auto">
+            <CodeDiffViewer files={diffs} />
+          </div>
+        )}
+        {tab === 'PR' && (
+          <div className="h-full overflow-y-auto">
+            <PRView />
+          </div>
+        )}
+        <div className={`h-full flex flex-col ${tab === 'Editor' ? 'flex' : 'hidden'}`}>
+          <VSCodeIDE files={files} />
+        </div>
       </div>
     </aside>
   );

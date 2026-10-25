@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 
-interface TabFile {
+export interface TabFile {
   name: string;
   path: string;
   lang: string;
@@ -10,7 +10,7 @@ interface TabFile {
   isWelcome?: boolean;
 }
 
-const DEFAULT_FILES: TabFile[] = [
+export const DEFAULT_FILES: TabFile[] = [
   {
     name: '✨ Orion IDE',
     path: 'welcome',
@@ -137,6 +137,26 @@ export default function VSCodeIDE({
 }) {
   const [openFiles, setOpenFiles] = useState<TabFile[]>(files);
   const [activeFileIdx, setActiveFileIdx] = useState(0);
+  const monacoEditorRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (files && files.length > 0) {
+      setOpenFiles(files);
+      setActiveFileIdx((prev) => {
+        const currentPath = openFiles[prev]?.path;
+        if (currentPath) {
+          const match = files.findIndex((f) => f.path === currentPath);
+          if (match !== -1) return match;
+        }
+        return prev < files.length ? prev : 0;
+      });
+      // Smooth Monaco layout recalculation without flicker
+      setTimeout(() => {
+        monacoEditorRef.current?.layout();
+      }, 50);
+    }
+  }, [files]);
+
   const activeFile = openFiles[activeFileIdx] || openFiles[0]!;
 
   // Activity bar state
@@ -544,6 +564,9 @@ export default function VSCodeIDE({
               language={activeFile.lang}
               value={activeFile.content}
               theme="vs-dark"
+              onMount={(editor) => {
+                monacoEditorRef.current = editor;
+              }}
               onChange={(newVal) => {
                 if (newVal !== undefined) {
                   setOpenFiles((prev) =>
@@ -561,6 +584,8 @@ export default function VSCodeIDE({
                 automaticLayout: true,
                 tabSize: 2,
                 cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                smoothScrolling: true,
                 wordWrap: 'on',
                 renderLineHighlight: 'all',
                 padding: { top: 6, bottom: 6 },

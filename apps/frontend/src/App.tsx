@@ -473,6 +473,7 @@ function ChatHeader({
   isRunning,
   sandboxPort,
   onPrClick,
+  onPreviewClick,
   sidebarCollapsed,
   onToggleSidebar,
 }: {
@@ -483,6 +484,7 @@ function ChatHeader({
   isRunning: boolean;
   sandboxPort?: number;
   onPrClick?: () => void;
+  onPreviewClick?: () => void;
   sidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
 }) {
@@ -530,8 +532,22 @@ function ChatHeader({
         </span>
       </div>
 
-      {/* Theme toggle */}
+      {/* Right controls: Preview button + Theme toggle */}
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onPreviewClick}
+          title="Open Live App Preview"
+          className="flex items-center gap-1.5 rounded-chip border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-ink hover:bg-hover hover:border-accent/40 transition-colors shadow-btn cursor-pointer"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <span>Preview</span>
+        </button>
+
         <div className="flex rounded-full border border-line bg-field p-0.5">
           {(['Light', 'Dark'] as const).map((mode) => {
             const active = mode === 'Dark' ? isDark : !isDark;
@@ -1190,6 +1206,7 @@ export default function App() {
           isRunning={isRunning && activeSession.status === 'running'}
           sandboxPort={activeSession.sandboxPort}
           onPrClick={() => setRightPanelTab('PR')}
+          onPreviewClick={() => setRightPanelTab('Preview')}
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
         />
@@ -1246,6 +1263,9 @@ export default function App() {
         repo={activeSession.repo}
         progressSteps={activeSessionProgressSteps}
         onApprove={handleApprovePR}
+        sessionId={activeSession.id}
+        sandboxPort={activeSession.sandboxPort}
+        onRunCommand={(cmd) => handleSend(cmd)}
       />
     </div>
   );

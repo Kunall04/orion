@@ -221,6 +221,103 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   });
 
   /**
+   * Preview status check: reports whether a session's sandbox dev server is reachable
+   */
+  app.get<{ Params: { id: string }; Querystring: { port?: string } }>(
+    '/preview/:id/status',
+    async (req, reply) => {
+      const sessionId = req.params.id;
+      const port = Number(req.query.port ?? 3000);
+      const session = sessionManager.getSession(sessionId);
+
+      if (!session) {
+        return reply.status(404).send({
+          ok: false,
+          error: `Session ${sessionId} not found`,
+        });
+      }
+
+      let running = false;
+      try {
+        const fetchFn = options.fetch ?? fetch;
+        const probe = await fetchFn(`http://127.0.0.1:${port}/`, {
+          method: 'HEAD',
+        });
+        running = probe.ok || probe.status < 500;
+      } catch {
+        running = false;
+      }
+
+      return {
+        ok: true,
+        sessionId,
+        port,
+        running,
+        sandbox: {
+          id: session.sandbox.id,
+          port: session.sandbox.port,
+          status: session.sandbox.status,
+        },
+      };
+    },
+  );
+
+  /**
+   * Reverse proxy: forwards requests from /preview/:id/:port/* directly
+   * to the web application port running inside the sandbox container.
+   */
+  app.all<{ Params: { id: string; port: string; '*': string } }>(
+    '/preview/:id/:port/*',
+    async (req, reply) => {
+      const sessionId = req.params.id;
+      const port = req.params.port;
+      const wildcard = req.params['*'] ?? '';
+      const session = sessionManager.getSession(sessionId);
+
+      if (!session) {
+        return reply.status(404).send({
+          ok: false,
+          error: `Session ${sessionId} not found`,
+        });
+      }
+
+      const queryString = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      const targetUrl = `http://127.0.0.1:${port}/${wildcard}${queryString}`;
+
+      try {
+        const fetchFn = options.fetch ?? fetch;
+        const res = await fetchFn(targetUrl, {
+          method: req.method,
+          headers: {
+            ...req.headers,
+            host: `127.0.0.1:${port}`,
+          } as any,
+          body:
+            req.method !== 'GET' && req.method !== 'HEAD' && req.body
+              ? typeof req.body === 'string'
+                ? req.body
+                : JSON.stringify(req.body)
+              : undefined,
+        });
+
+        reply.status(res.status);
+        for (const [key, val] of res.headers.entries()) {
+          if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+            reply.header(key, val);
+          }
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        return reply.send(buffer);
+      } catch (err: any) {
+        return reply.status(502).send({
+          ok: false,
+          error: `Failed to proxy to sandbox port ${port}: ${err.message}`,
+        });
+      }
+    },
+  );
+
+  /**
    * Create new agent task
    */
   app.post<{ Body: { instruction: string; repo?: string; sessionId?: string } }>(

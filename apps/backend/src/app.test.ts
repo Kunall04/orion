@@ -241,4 +241,67 @@ describe('backend', () => {
       expect(delRes.statusCode).toBe(404);
     });
   });
+
+  describe('Live Preview routes', () => {
+    it('returns 404 for preview status on unknown session', async () => {
+      const app = buildApp({ autoExecuteTasks: false });
+      const res = await app.inject({ method: 'GET', url: '/preview/unknown-session/status' });
+      expect(res.statusCode).toBe(404);
+      expect(res.json().ok).toBe(false);
+    });
+
+    it('checks preview status on active session with custom fetch probe', async () => {
+      const mockFetch: typeof fetch = async (input, init) => {
+        return new Response(null, { status: 200 });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: { id: 'preview-session-1' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/preview/preview-session-1/status?port=3000',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.sessionId).toBe('preview-session-1');
+      expect(data.port).toBe(3000);
+      expect(data.running).toBe(true);
+      expect(data.sandbox.port).toBeDefined();
+    });
+
+    it('proxies preview requests to the sandbox application port', async () => {
+      let capturedUrl = '';
+      const mockFetch: typeof fetch = async (input, init) => {
+        capturedUrl = String(input);
+        return new Response('<html><body>Live App Test</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: { id: 'preview-session-2' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/preview/preview-session-2/3000/dashboard/users?sort=asc',
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('text/html');
+      expect(res.body).toContain('Live App Test');
+      expect(capturedUrl).toBe('http://127.0.0.1:3000/dashboard/users?sort=asc');
+    });
+  });
 });

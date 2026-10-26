@@ -110,7 +110,7 @@ function loadSavedActiveSessionId(availableSessions: SessionData[]): string {
 function loadSavedTab(): PanelTab {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_TAB);
-    if (raw && ['Progress', 'Changes', 'PR', 'Editor', 'Terminal', 'Preview'].includes(raw)) {
+    if (raw && ['Progress', 'Changes', 'PR', 'Editor', 'Preview'].includes(raw)) {
       return raw as PanelTab;
     }
   } catch {}

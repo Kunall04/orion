@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 export interface InteractiveTerminalProps {
   sessionId?: string;
   sandboxPort?: number;
+  repo?: string;
 }
 
 interface TerminalLine {
@@ -14,13 +15,20 @@ interface TerminalLine {
 export default function InteractiveTerminal({
   sessionId = 's1',
   sandboxPort,
+  repo,
 }: InteractiveTerminalProps) {
+  const shortRepo = repo ? repo.split('/').pop() || repo : 'workspace';
+
   const [lines, setLines] = useState<TerminalLine[]>([
-    { id: 'init-1', type: 'info', text: `Orion Sandbox Environment (session: ${sessionId})` },
+    {
+      id: 'init-1',
+      type: 'info',
+      text: `[orion] Connected to sandbox environment (session: ${sessionId})`,
+    },
     {
       id: 'init-2',
-      type: 'success',
-      text: `✓ Connected to sandbox container (workspace: /workspace, port: ${sandboxPort ?? 5001})`,
+      type: 'info',
+      text: `[orion] Workspace: /workspace (port ${sandboxPort ?? 5001})`,
     },
   ]);
   const [inputVal, setInputVal] = useState('');
@@ -32,10 +40,11 @@ export default function InteractiveTerminal({
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [lines]);
+  }, [lines, isExecuting]);
 
+  // Listen to external terminal commands & clear events
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handleCommandEvent = (e: Event) => {
       const customEvent = e as CustomEvent<{ command: string; output: string }>;
       if (!customEvent.detail) return;
       const { command, output } = customEvent.detail;
@@ -46,8 +55,16 @@ export default function InteractiveTerminal({
       ]);
     };
 
-    window.addEventListener('orion:terminal-command', handler);
-    return () => window.removeEventListener('orion:terminal-command', handler);
+    const handleClearEvent = () => {
+      setLines([]);
+    };
+
+    window.addEventListener('orion:terminal-command', handleCommandEvent);
+    window.addEventListener('orion:terminal-clear', handleClearEvent);
+    return () => {
+      window.removeEventListener('orion:terminal-command', handleCommandEvent);
+      window.removeEventListener('orion:terminal-clear', handleClearEvent);
+    };
   }, []);
 
   const handleCommand = async (cmd: string) => {
@@ -65,7 +82,7 @@ export default function InteractiveTerminal({
     setHistIdx(-1);
     setInputVal('');
 
-    // Handle clear
+    // Handle client-side clear
     if (trimmed === 'clear') {
       setLines([]);
       return;
@@ -155,99 +172,66 @@ export default function InteractiveTerminal({
   };
 
   return (
-    <div className="flex h-full flex-col p-3">
-      {/* Quick command buttons */}
-      <div className="mb-2.5 flex flex-wrap items-center gap-1.5 px-0.5">
-        {[
-          { label: 'npm test', cmd: 'npm test' },
-          { label: 'npm run dev', cmd: 'npm run dev' },
-          { label: 'git status', cmd: 'git status' },
-          { label: 'git diff', cmd: 'git diff' },
-          { label: 'ls -la', cmd: 'ls -la' },
-          { label: 'clear', cmd: 'clear' },
-        ].map((btn) => (
-          <button
-            key={btn.label}
-            type="button"
-            disabled={isExecuting}
-            onClick={() => handleCommand(btn.cmd)}
-            className="rounded-chip border border-line bg-surface px-2 py-0.5 font-mono text-[10.5px] text-ink-2 shadow-btn transition-colors hover:bg-hover hover:text-ink active:scale-95 disabled:opacity-50"
-          >
-            {btn.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Terminal window */}
-      <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-line bg-[#0d0e11] shadow-raised"
-        onClick={() => inputRef.current?.focus()}
-      >
-        {/* Terminal titlebar */}
-        <div className="flex h-7 shrink-0 items-center justify-between border-b border-white/10 bg-[#16171d] px-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-red opacity-70" />
-            <span className="h-2 w-2 rounded-full bg-orange opacity-70" />
-            <span className="h-2 w-2 rounded-full bg-green opacity-70" />
-            <span className="ml-2 font-mono text-[10px] text-white/50">bash — /workspace</span>
-          </div>
-          <span className="flex items-center gap-1 font-mono text-[9.5px] text-green">
-            <span className="h-1.5 w-1.5 rounded-full bg-green animate-pulse" />
-            connected
-          </span>
-        </div>
-
-        {/* Scrollable output area */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed text-ink select-text">
-          {lines.map((l) => {
-            if (l.type === 'input') {
-              return (
-                <div key={l.id} className="mt-1 flex items-start gap-1.5 text-white/90">
-                  <span className="text-accent select-none">orion@sandbox:~$</span>
-                  <span className="font-semibold text-white">{l.text}</span>
-                </div>
-              );
-            }
-            if (l.type === 'info') {
-              return (
-                <div key={l.id} className="text-white/40 text-[10.5px]">
-                  {l.text}
-                </div>
-              );
-            }
-            if (l.type === 'success') {
-              return (
-                <div key={l.id} className="text-green text-[10.5px]">
-                  {l.text}
-                </div>
-              );
-            }
-            if (l.type === 'error') {
-              return (
-                <div key={l.id} className="text-red text-[10.5px]">
-                  {l.text}
-                </div>
-              );
-            }
+    <div
+      className="flex h-full w-full flex-col bg-[#181818] font-mono text-[12px] select-text cursor-text overflow-hidden"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {/* Scrollable terminal text output area (matching VS Code Image 4) */}
+      <div className="flex-1 overflow-y-auto px-4 py-2 font-mono text-[12px] leading-relaxed text-[#cccccc]">
+        {lines.map((l) => {
+          if (l.type === 'input') {
             return (
-              <pre key={l.id} className="whitespace-pre-wrap text-white/70 py-0.5 font-mono">
-                {l.text}
-              </pre>
+              <div key={l.id} className="mt-1 flex items-start gap-2 text-white">
+                <span className="flex items-center gap-1.5 select-none font-medium">
+                  <span className="text-[#38bdf8]">~/{shortRepo}</span>
+                  <span className="text-[#4ade80]">main</span>
+                  <span className="text-[#e2e8f0] font-bold">&gt;</span>
+                </span>
+                <span className="font-semibold text-white">{l.text}</span>
+              </div>
             );
-          })}
-          {isExecuting && (
-            <div className="flex items-center gap-1.5 py-1 text-white/40 font-mono text-[10.5px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-ping" />
-              Executing command in sandbox...
-            </div>
-          )}
-          <div ref={scrollRef} />
-        </div>
+          }
+          if (l.type === 'info') {
+            return (
+              <div key={l.id} className="text-[#858585] text-[11px] leading-snug">
+                {l.text}
+              </div>
+            );
+          }
+          if (l.type === 'success') {
+            return (
+              <div key={l.id} className="text-[#4ade80] text-[11.5px]">
+                {l.text}
+              </div>
+            );
+          }
+          if (l.type === 'error') {
+            return (
+              <div key={l.id} className="text-[#f87171] text-[11.5px]">
+                {l.text}
+              </div>
+            );
+          }
+          return (
+            <pre key={l.id} className="whitespace-pre-wrap font-mono text-[11.5px] text-[#cccccc] py-0.5">
+              {l.text}
+            </pre>
+          );
+        })}
 
-        {/* Live input row */}
-        <div className="flex items-center gap-1.5 border-t border-white/10 bg-[#121318] px-3 py-1.5">
-          <span className="font-mono text-[11px] text-accent select-none shrink-0">
-            orion@sandbox:~$
+        {isExecuting && (
+          <div className="flex items-center gap-2 py-1 text-[#858585] font-mono text-[11.5px]">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-ping" />
+            Executing command in sandbox...
+          </div>
+        )}
+
+        {/* Live input row sitting directly beneath last command */}
+        <div className="flex items-center gap-2 pt-1 font-mono text-[12px]">
+          <span className="flex items-center gap-1.5 select-none font-medium">
+            <span className="text-[#38bdf8]">~/{shortRepo}</span>
+            <span className="text-[#4ade80]">main</span>
+            <span className="text-[#e2e8f0] font-bold">&gt;</span>
           </span>
           <input
             ref={inputRef}
@@ -256,10 +240,12 @@ export default function InteractiveTerminal({
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isExecuting ? "Executing..." : "Type command (e.g. 'npm test', 'npm run dev', 'git status')..."}
-            className="flex-1 bg-transparent font-mono text-[11px] text-white outline-none placeholder:text-white/30 disabled:opacity-50"
+            className="flex-1 bg-transparent font-mono text-[12px] text-white outline-none caret-white"
+            autoFocus
           />
         </div>
+
+        <div ref={scrollRef} />
       </div>
     </div>
   );

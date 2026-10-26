@@ -858,7 +858,10 @@ export default function VSCodeIDE({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsBottomPanelOpen(true)}
+                  onClick={() => {
+                    setIsBottomPanelOpen(true);
+                    setBottomPanelTab('terminal');
+                  }}
                   className="rounded-chip border border-accent bg-accent/15 px-3 py-1 font-mono text-[11px] text-accent hover:bg-accent/25 transition-colors"
                 >
                   Open Terminal
@@ -910,10 +913,10 @@ export default function VSCodeIDE({
               }`}
             />
 
-            {/* Panel Tab Bar (Image 3 skeleton) */}
-            <div className="flex h-[32px] shrink-0 items-center justify-between border-b border-[#252526] bg-[#1e1e1e] px-3">
+            {/* Panel Tab Bar (Matching VS Code Image 4) */}
+            <div className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#252526] bg-[#181818] px-3">
               {/* Left Panel Tabs */}
-              <div className="flex h-full items-center gap-4 text-[11px] font-sans">
+              <div className="flex h-full items-center gap-4 text-[11.5px] font-sans">
                 <button
                   type="button"
                   onClick={() => setBottomPanelTab('problems')}
@@ -924,7 +927,7 @@ export default function VSCodeIDE({
                   }`}
                 >
                   <span>Problems</span>
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#007acc] text-[9.5px] font-bold text-white">
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#007acc] text-[9px] font-bold text-white">
                     0
                   </span>
                 </button>
@@ -978,21 +981,96 @@ export default function VSCodeIDE({
                 </button>
               </div>
 
-              {/* Right Panel Controls (Image 3) */}
-              <div className="flex items-center gap-2 text-[#858585]">
-                <div className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-[#252526] text-[11px] font-mono text-[#cccccc]">
+              {/* Right Panel Controls (Image 4) */}
+              <div className="flex items-center gap-1 text-[#858585]">
+                {/* zsh pill dropdown */}
+                <div className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-mono text-[#cccccc] hover:bg-[#2a2d2e] cursor-pointer">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="4 17 10 11 4 5" />
+                    <line x1="12" y1="19" x2="20" y2="19" />
+                  </svg>
                   <span>zsh</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="6 9 12 15 18 9" />
                   </svg>
                 </div>
+
+                {/* + New terminal button */}
+                <button
+                  type="button"
+                  title="New Terminal"
+                  onClick={() => window.dispatchEvent(new CustomEvent('orion:terminal-command', { detail: { command: 'clear', output: '' } }))}
+                  className="flex items-center gap-0.5 rounded px-1.5 py-0.5 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {/* Split Terminal button */}
+                <button
+                  type="button"
+                  title="Split Terminal"
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="12" y1="3" x2="12" y2="21" />
+                  </svg>
+                </button>
+
+                {/* Trash Can button (Kill / Clear Terminal) */}
+                <button
+                  type="button"
+                  title="Kill / Clear Terminal"
+                  onClick={() => window.dispatchEvent(new CustomEvent('orion:terminal-clear'))}
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+
+                {/* More actions ... */}
+                <button
+                  type="button"
+                  title="More Actions..."
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="12" r="1.5" />
+                    <circle cx="12" cy="12" r="1.5" />
+                    <circle cx="19" cy="12" r="1.5" />
+                  </svg>
+                </button>
+
+                {/* Maximize / Restore Panel Height */}
+                <button
+                  type="button"
+                  title={bottomPanelHeight > 280 ? 'Restore Panel Size' : 'Maximize Panel Size'}
+                  onClick={() => setBottomPanelHeight((prev) => (prev > 280 ? 190 : 380))}
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {bottomPanelHeight > 280 ? (
+                      <polyline points="6 9 12 15 18 9" />
+                    ) : (
+                      <polyline points="18 15 12 9 6 15" />
+                    )}
+                  </svg>
+                </button>
 
                 {/* Close Panel Button */}
                 <button
                   type="button"
                   title="Close Panel"
                   onClick={() => setIsBottomPanelOpen(false)}
-                  className="rounded p-1 hover:bg-[#333333] hover:text-white transition-colors"
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -1003,10 +1081,10 @@ export default function VSCodeIDE({
             </div>
 
             {/* Panel Tab Content */}
-            <div className="min-h-0 flex-1 overflow-hidden bg-[#1e1e1e]">
+            <div className="min-h-0 flex-1 overflow-hidden bg-[#181818]">
               {bottomPanelTab === 'terminal' && (
-                <div className="h-full overflow-y-auto">
-                  <InteractiveTerminal sessionId={sessionId} sandboxPort={sandboxPort} />
+                <div className="h-full overflow-hidden">
+                  <InteractiveTerminal sessionId={sessionId} sandboxPort={sandboxPort} repo={repo} />
                 </div>
               )}
               {bottomPanelTab === 'problems' && (

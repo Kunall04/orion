@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import VSCodeIDE, { type TabFile } from './VSCodeIDE';
 import CodeDiffViewer, { type FileDiffItem } from './CodeDiffViewer';
-import InteractiveTerminal from './InteractiveTerminal';
 import FileTreeViewer from './FileTreeViewer';
 import ApprovalCard from './ApprovalCard';
 import AppPreview from './AppPreview';
 
-export type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor' | 'Terminal' | 'Preview';
+export type PanelTab = 'Progress' | 'Changes' | 'PR' | 'Editor' | 'Preview';
 
-const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor', 'Terminal', 'Preview'];
+const TABS: PanelTab[] = ['Progress', 'Changes', 'PR', 'Editor', 'Preview'];
 
 const TAB_CONFIG: Record<
   PanelTab,
@@ -40,14 +39,6 @@ const TAB_CONFIG: Record<
   },
   Editor: {
     label: '</> Editor',
-  },
-  Terminal: {
-    label: 'Terminal',
-    icon: (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-      </svg>
-    ),
   },
   Preview: {
     label: 'Preview',
@@ -247,7 +238,7 @@ export default function RightPanel({
     setWidth((prev) => (prev > 520 ? 400 : 660));
   };
 
-  const visibleTabs = tab === 'Terminal' ? TABS : TABS.filter((t) => t !== 'Terminal');
+  const visibleTabs = TABS;
 
   return (
     <aside
@@ -300,19 +291,6 @@ export default function RightPanel({
             );
           })}
 
-          {/* Plus Add Tab Button */}
-          {tab !== 'Terminal' && (
-            <button
-              type="button"
-              title="Open Terminal"
-              onClick={() => handleTabClick('Terminal')}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
-          )}
         </div>
 
         {/* Width toggle button */}
@@ -358,11 +336,6 @@ export default function RightPanel({
             <PRView pr={pr} sessionTitle={sessionTitle} repo={repo} onApprove={onApprove} />
           </div>
         )}
-        {tab === 'Terminal' && (
-          <div className="h-full overflow-y-auto">
-            <InteractiveTerminal sessionId={sessionId} sandboxPort={sandboxPort} />
-          </div>
-        )}
         {tab === 'Preview' && (
           <div className="h-full overflow-hidden">
             <AppPreview
@@ -378,7 +351,6 @@ export default function RightPanel({
             files={files}
             sessionId={sessionId}
             sandboxPort={sandboxPort}
-            onOpenTerminalTab={() => handleTabClick('Terminal')}
             repo={repo}
           />
         </div>

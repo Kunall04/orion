@@ -671,6 +671,47 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  /* Fetch real sandbox workspace files for the active session */
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let cancelled = false;
+
+    fetch(`/sessions/${activeSessionId}/files`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.ok && Array.isArray(data.files) && data.files.length > 0) {
+          const workspaceFiles: TabFile[] = [
+            DEFAULT_FILES[0]!,
+            ...data.files.map((p: string) => {
+              const name = p.split('/').pop() || p;
+              let lang = 'plaintext';
+              if (p.endsWith('.ts') || p.endsWith('.tsx')) lang = 'typescript';
+              else if (p.endsWith('.js') || p.endsWith('.jsx')) lang = 'javascript';
+              else if (p.endsWith('.json')) lang = 'json';
+              else if (p.endsWith('.md')) lang = 'markdown';
+              else if (p.endsWith('.css')) lang = 'css';
+              else if (p.endsWith('.html')) lang = 'html';
+              return {
+                name,
+                path: p,
+                lang,
+                content: '',
+              };
+            }),
+          ];
+
+          setSessions((prev) =>
+            prev.map((s) => (s.id === activeSessionId ? { ...s, files: workspaceFiles } : s)),
+          );
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId, activeSession.sandboxPort]);
+
   /**
    * Create a new blank session (and provision sandbox on backend)
    */

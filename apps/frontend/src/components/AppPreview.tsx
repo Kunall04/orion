@@ -33,125 +33,6 @@ interface ConsoleLogItem {
   source?: string;
 }
 
-// Matching the exact rows and structure from Chrome DevTools screenshot (Image 2)
-const CHROME_NETWORK_REQUESTS: NetworkRequestItem[] = [
-  {
-    id: 'req-1',
-    name: 'indicator',
-    status: 304,
-    type: 'fetch',
-    initiator: 'index-DRotaQBD.js:4',
-    size: '5.9 kB',
-    time: '324 ms',
-    waterfallOffset: 2,
-    waterfallWidth: 14,
-    waterfallColor: 'blue',
-  },
-  {
-    id: 'req-2',
-    name: '_sidebar',
-    status: 304,
-    type: 'fetch',
-    initiator: 'index-DRotaQBD.js:4',
-    size: '5.9 kB',
-    time: '422 ms',
-    waterfallOffset: 12,
-    waterfallWidth: 18,
-    waterfallColor: 'green',
-  },
-  {
-    id: 'req-3',
-    name: 'chat?skip_anchor=true',
-    status: 304,
-    type: 'fetch',
-    initiator: 'index-DRotaQBD.js:4',
-    size: '5.9 kB',
-    time: '422 ms',
-    waterfallOffset: 15,
-    waterfallWidth: 18,
-    waterfallColor: 'orange',
-  },
-  {
-    id: 'req-4',
-    name: 'rum?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Dbrows...te%26batch_time%3D1...',
-    status: 202,
-    type: 'fetch',
-    initiator: 'main-DjBvoiJ_.js:6',
-    size: '0.9 kB',
-    time: '311 ms',
-    waterfallOffset: 28,
-    waterfallWidth: 12,
-    waterfallColor: 'green',
-  },
-  {
-    id: 'req-5',
-    name: 'rum?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Dbrows...te%26batch_time%3D1...',
-    status: 202,
-    type: 'fetch',
-    initiator: 'main-DjBvoiJ_.js:6',
-    size: '0.9 kB',
-    time: '317 ms',
-    waterfallOffset: 34,
-    waterfallWidth: 12,
-    waterfallColor: 'blue',
-  },
-  {
-    id: 'req-6',
-    name: 'rum?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Dbrows...te%26batch_time%3D1...',
-    status: 202,
-    type: 'fetch',
-    initiator: 'main-DjBvoiJ_.js:6',
-    size: '0.9 kB',
-    time: '399 ms',
-    waterfallOffset: 40,
-    waterfallWidth: 15,
-    waterfallColor: 'green',
-  },
-  {
-    id: 'req-7',
-    name: 'rum?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Dbrows...te%26batch_time%3D1...',
-    status: 202,
-    type: 'fetch',
-    initiator: 'main-DjBvoiJ_.js:6',
-    size: '0.9 kB',
-    time: '396 ms',
-    waterfallOffset: 48,
-    waterfallWidth: 15,
-    waterfallColor: 'purple',
-  },
-  {
-    id: 'req-8',
-    name: 'rum?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Dbrows...te%26batch_time%3D1...',
-    status: 202,
-    type: 'fetch',
-    initiator: 'main-DjBvoiJ_.js:6',
-    size: '0.9 kB',
-    time: '411 ms',
-    waterfallOffset: 55,
-    waterfallWidth: 16,
-    waterfallColor: 'green',
-  },
-  {
-    id: 'req-9',
-    name: 'chat',
-    status: 304,
-    type: 'fetch',
-    initiator: 'index-DRotaQBD.js:4',
-    size: '5.9 kB',
-    time: '416 ms',
-    waterfallOffset: 65,
-    waterfallWidth: 20,
-    waterfallColor: 'green',
-  },
-];
-
-const DEFAULT_CONSOLE_LOGS: ConsoleLogItem[] = [
-  { id: 'log-1', type: 'info', msg: '[App] Initializing Checkout Gate client v2.4.1', time: '10:42:01', source: 'main.tsx:12' },
-  { id: 'log-2', type: 'log', msg: '[Auth] Verified JWT signature via GitHub App gate', time: '10:42:02', source: 'auth.ts:45' },
-  { id: 'log-3', type: 'warn', msg: '[RateLimit] Approaching limit threshold: 9/10 requests used', time: '10:42:04', source: 'gate.ts:89' },
-  { id: 'log-4', type: 'error', msg: 'FetchError: POST /api/checkout failed with HTTP 429 (Rate Limit Exceeded)', time: '10:42:05', source: 'tasks.test.ts:34' },
-];
-
 export default function AppPreview({
   sessionId = 's1',
   sandboxPort,
@@ -164,35 +45,75 @@ export default function AppPreview({
   const [isReloading, setIsReloading] = useState<boolean>(false);
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [copied, setCopied] = useState<boolean>(false);
-  const [mode, setMode] = useState<'live' | 'sample'>('sample');
   const [iframeLoaded, setIframeLoaded] = useState<boolean>(false);
   const [showDevTools, setShowDevTools] = useState<boolean>(true);
   const [devToolsTab, setDevToolsTab] = useState<DevToolsTab>('Network');
-  const [networkRequests, setNetworkRequests] = useState<NetworkRequestItem[]>(CHROME_NETWORK_REQUESTS);
-  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogItem[]>(DEFAULT_CONSOLE_LOGS);
+  const [networkRequests, setNetworkRequests] = useState<NetworkRequestItem[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogItem[]>([]);
   const [consoleInput, setConsoleInput] = useState<string>('');
   const [selectedRequest, setSelectedRequest] = useState<NetworkRequestItem | null>(null);
-  const [selectedElement, setSelectedElement] = useState<string>('div#checkout-app');
+  const [selectedElement, setSelectedElement] = useState<string>('div#app');
   const [filterText, setFilterText] = useState<string>('');
   const [disableCache, setDisableCache] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(true);
+  const [serverRunning, setServerRunning] = useState<boolean>(false);
+  const [checkingStatus, setCheckingStatus] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Listen for message events from injected spy script
+  // Poll backend preview status for localhost dev server reachability
+  useEffect(() => {
+    let cancelled = false;
+    const checkServer = async () => {
+      try {
+        const res = await fetch(`/preview/${sessionId}/status?port=3000`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setServerRunning(Boolean(data.running));
+            setCheckingStatus(false);
+          }
+        } else {
+          if (!cancelled) {
+            setServerRunning(false);
+            setCheckingStatus(false);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setServerRunning(false);
+          setCheckingStatus(false);
+        }
+      }
+    };
+
+    checkServer();
+    const interval = setInterval(checkServer, 3500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
+
+  // Listen for real message events from injected spy script in proxied pages
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'ORION_NETWORK_EVENT' && isRecording) {
+        const req = e.data.request || {};
+        const isOk = req.status >= 200 && req.status < 400;
+        const rawUrl = String(req.url || '/api/request');
+        const shortName = rawUrl.replace(/^https?:\/\/[^/]+/, '') || rawUrl;
+
         const item: NetworkRequestItem = {
           id: `req-${Date.now()}-${Math.random()}`,
-          name: e.data.request.url || '/api/request',
-          status: e.data.request.status || 200,
+          name: shortName,
+          status: req.status || (isOk ? 200 : 502),
           type: 'fetch',
-          initiator: 'bundle.js:12',
-          size: '640 B',
-          time: `${e.data.request.time || 24} ms`,
-          waterfallOffset: Math.min(80, Math.floor(Math.random() * 60)),
-          waterfallWidth: 15,
-          waterfallColor: e.data.request.status === 200 ? 'green' : 'orange',
+          initiator: 'bundle.js:14',
+          size: isOk ? '1.4 kB' : '480 B',
+          time: `${req.time || 28} ms`,
+          waterfallOffset: Math.min(75, Math.floor(Math.random() * 50)),
+          waterfallWidth: 16,
+          waterfallColor: isOk ? 'green' : 'orange',
         };
         setNetworkRequests((prev) => [item, ...prev]);
       } else if (e.data?.type === 'ORION_CONSOLE_EVENT') {
@@ -212,6 +133,26 @@ export default function AppPreview({
   const handleReload = () => {
     setIsReloading(true);
     setIframeLoaded(false);
+
+    // Record reload document request in network log
+    if (isRecording) {
+      const isLocal = inputUrl.includes('localhost') || inputUrl.includes('127.0.0.1');
+      const docName = inputUrl.replace(/^https?:\/\//, '').split('/')[0] || inputUrl;
+      const navReq: NetworkRequestItem = {
+        id: `nav-${Date.now()}`,
+        name: docName,
+        status: isLocal && !serverRunning ? 'FAIL' : 200,
+        type: 'document',
+        initiator: 'other',
+        size: isLocal && !serverRunning ? '0 B' : '1.8 kB',
+        time: '42 ms',
+        waterfallOffset: 0,
+        waterfallWidth: 15,
+        waterfallColor: isLocal && !serverRunning ? 'orange' : 'blue',
+      };
+      setNetworkRequests((prev) => [navReq, ...prev]);
+    }
+
     setIframeKey((k) => k + 1);
     setTimeout(() => {
       setIsReloading(false);
@@ -221,9 +162,14 @@ export default function AppPreview({
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     let target = inputUrl.trim();
+    if (!target) return;
     if (!target.startsWith('http://') && !target.startsWith('https://')) {
       target = `http://${target}`;
     }
+
+    const isExternal =
+      !target.includes('localhost') &&
+      !target.includes('127.0.0.1');
 
     // Smart unblocking proxy for external domains (e.g. google.com, github.com)
     let effectiveUrl = target;
@@ -233,6 +179,27 @@ export default function AppPreview({
         effectiveUrl = `http://localhost:4000/api/proxy/browse?url=${encodeURIComponent(target)}`;
       }
     } catch {}
+
+    // Record top-level navigation in Network tab
+    if (isRecording) {
+      const domainName = target.replace(/^https?:\/\//, '').split('/')[0] || target;
+      const isLocal = target.includes('localhost:3000') || target.includes('127.0.0.1:3000');
+      const reqStatus = isLocal && !serverRunning ? 'FAIL' : isExternal ? 502 : 200;
+
+      const navReq: NetworkRequestItem = {
+        id: `nav-${Date.now()}`,
+        name: domainName,
+        status: reqStatus,
+        type: 'document',
+        initiator: 'other',
+        size: reqStatus === 'FAIL' ? '0 B' : '1.6 kB',
+        time: '78 ms',
+        waterfallOffset: 0,
+        waterfallWidth: 18,
+        waterfallColor: reqStatus === 200 ? 'blue' : 'orange',
+      };
+      setNetworkRequests((prev) => [navReq, ...prev]);
+    }
 
     setUrl(effectiveUrl);
     setInputUrl(target);
@@ -261,12 +228,12 @@ export default function AppPreview({
     ]);
 
     try {
-      let result = 'undefined';
-      if (cmd === 'document.title') result = '"Checkout Gate Service"';
-      else if (cmd === 'location.href') result = `"${url}"`;
-      else if (cmd === 'navigator.userAgent') result = `"${navigator.userAgent}"`;
-      else if (cmd === 'window.innerWidth') result = String(window.innerWidth);
-      else {
+      let result = '';
+      if (cmd === 'location.href') {
+        result = inputUrl;
+      } else if (cmd === 'navigator.userAgent') {
+        result = navigator.userAgent;
+      } else {
         const safeEval = new Function(`return (${cmd})`);
         result = String(safeEval());
       }
@@ -286,6 +253,8 @@ export default function AppPreview({
   const filteredRequests = networkRequests.filter((r) =>
     r.name.toLowerCase().includes(filterText.toLowerCase())
   );
+
+  const isLocalhostApp = inputUrl.includes('localhost:3000') || inputUrl.includes('127.0.0.1:3000');
 
   return (
     <div className="flex h-full w-full flex-col bg-[#202124] text-[#e8eaed] select-none overflow-hidden font-sans">
@@ -436,7 +405,32 @@ export default function AppPreview({
                 : 'w-[375px] max-w-full rounded-2xl border-4 border-[#3c4043] bg-[#292a2d] shadow-2xl'
             }`}
           >
-            {mode === 'live' ? (
+            {isLocalhostApp && !serverRunning && !checkingStatus ? (
+              /* Clean empty state when local dev server is not running */
+              <div className="flex h-full w-full flex-col items-center justify-center bg-[#202124] p-6 text-center text-[#e8eaed]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#292a2d] border border-[#3c4043] text-[#9aa0a6] mb-3">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-semibold text-[#e8eaed]">No live dev server running on port 3000</h3>
+                <p className="mt-1 max-w-sm text-xs text-[#9aa0a6] leading-relaxed">
+                  The application server has not started yet. Run <code>npm run dev</code> from the terminal to launch your live preview.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onRunCommand?.('npm run dev')}
+                  className="mt-4 flex items-center gap-1.5 rounded-full bg-[#8ab4f8] px-4 py-1.5 text-xs font-semibold text-[#202124] hover:opacity-90 active:scale-95 transition-all shadow-md"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  <span>Start Dev Server (npm run dev)</span>
+                </button>
+              </div>
+            ) : (
               <div className="relative h-full w-full bg-white">
                 {isReloading && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#202124]/80 backdrop-blur-xs">
@@ -457,47 +451,6 @@ export default function AppPreview({
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
                   className="h-full w-full border-none"
                 />
-              </div>
-            ) : (
-              /* Interactive Sample Mock View */
-              <div className="h-full w-full overflow-y-auto bg-[#202124] p-4 text-[#e8eaed] flex flex-col">
-                <div className="flex items-center justify-between border-b border-[#3c4043] pb-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded bg-[#81c995]/20 text-[#81c995] font-bold text-xs">
-                      ⚡
-                    </div>
-                    <div>
-                      <h3 className="text-[13px] font-semibold text-[#e8eaed] leading-tight">Checkout Gate Service</h3>
-                      <p className="font-mono text-[10px] text-[#9aa0a6]">{repo}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMode('live')}
-                      className="rounded bg-[#35363a] px-2 py-0.5 text-[10px] text-[#8ab4f8] hover:bg-[#3c4043]"
-                    >
-                      Switch to Live Iframe
-                    </button>
-                    <span className="flex items-center gap-1 rounded-full bg-[#81c995]/15 px-2 py-0.5 text-[9.5px] font-semibold text-[#81c995]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#81c995] animate-pulse" />
-                      200 OK
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="rounded border border-[#3c4043] bg-[#292a2d] p-2.5">
-                    <span className="text-[10px] text-[#9aa0a6]">Rate Limit Window</span>
-                    <p className="mt-0.5 font-mono text-[14px] font-semibold text-[#8ab4f8]">10 req / 60s</p>
-                    <span className="text-[9.5px] text-[#81c995] font-mono mt-0.5 block">✓ 429 Test Patched</span>
-                  </div>
-                  <div className="rounded border border-[#3c4043] bg-[#292a2d] p-2.5">
-                    <span className="text-[10px] text-[#9aa0a6]">Commit Attribution</span>
-                    <p className="mt-0.5 font-mono text-[13px] font-semibold text-[#e8eaed]">orion-bot</p>
-                    <span className="text-[9.5px] text-[#81c995] font-mono mt-0.5 block">✓ GitHub Verified</span>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -545,12 +498,14 @@ export default function AppPreview({
                 })}
               </div>
 
-              {/* DevTools top right controls (Red error badge, settings, close) */}
+              {/* DevTools top right controls */}
               <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 rounded bg-[#f28b82]/20 px-1 text-[9.5px] font-bold text-[#f28b82]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#f28b82]" />
-                  1
-                </span>
+                {networkRequests.some((r) => r.status === 'FAIL' || (typeof r.status === 'number' && r.status >= 400)) && (
+                  <span className="flex items-center gap-1 rounded bg-[#f28b82]/20 px-1 text-[9.5px] font-bold text-[#f28b82]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#f28b82]" />
+                    {networkRequests.filter((r) => r.status === 'FAIL' || (typeof r.status === 'number' && r.status >= 400)).length}
+                  </span>
+                )}
                 <button type="button" title="Customize and control DevTools" className="text-[#9aa0a6] hover:text-[#e8eaed]">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="3" />
@@ -649,18 +604,13 @@ export default function AppPreview({
                     <span className="w-[12.5%]">4,000 ms</span>
                   </div>
 
-                  {/* Colored Timeline Activity Bars */}
+                  {/* Activity bars */}
                   <div className="absolute top-5 left-0 right-0 bottom-0 p-1 flex flex-col gap-0.5 justify-center">
                     <div className="relative h-1.5 w-full bg-[#292a2d]/40 rounded">
                       <span className="absolute left-[3%] w-[15%] h-full bg-[#81c995] rounded-xs" />
                       <span className="absolute left-[18%] w-[22%] h-full bg-[#8ab4f8] rounded-xs" />
                       <span className="absolute left-[45%] w-[12%] h-full bg-[#fdd663] rounded-xs" />
                       <span className="absolute left-[65%] w-[25%] h-full bg-[#81c995] rounded-xs" />
-                    </div>
-                    <div className="relative h-1.5 w-full bg-[#292a2d]/40 rounded">
-                      <span className="absolute left-[8%] w-[25%] h-full bg-[#8ab4f8] rounded-xs" />
-                      <span className="absolute left-[36%] w-[18%] h-full bg-[#81c995] rounded-xs" />
-                      <span className="absolute left-[70%] w-[10%] h-full bg-[#81c995] rounded-xs" />
                     </div>
                   </div>
                 </div>
@@ -676,64 +626,88 @@ export default function AppPreview({
                   <span className="w-24 pl-3 truncate">Waterfall</span>
                 </div>
 
-                {/* Network Table Rows */}
+                {/* Network Table Rows or Empty State */}
                 <div className="flex-1 overflow-y-auto divide-y divide-[#292a2d]/60 font-sans text-[10.5px]">
-                  {filteredRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      onClick={() => setSelectedRequest(req)}
-                      className={`flex h-5 items-center px-2 cursor-pointer transition-colors ${
-                        selectedRequest?.id === req.id
-                          ? 'bg-[#004a77] text-white'
-                          : 'hover:bg-[#28292c] text-[#e8eaed]'
-                      }`}
-                    >
-                      {/* Name with { } fetch icon */}
-                      <div className="flex w-[42%] items-center gap-1.5 truncate pr-2">
-                        <span className="text-[#f2994a] text-[9.5px] font-mono shrink-0">&lt;&gt;</span>
-                        <span className="truncate">{req.name}</span>
-                      </div>
-                      {/* Status */}
-                      <span className="w-14 truncate text-[#e8eaed]">{req.status}</span>
-                      {/* Type */}
-                      <span className="w-14 truncate text-[#9aa0a6]">{req.type}</span>
-                      {/* Initiator (Blue link) */}
-                      <span className="w-32 truncate text-[#8ab4f8] underline-offset-2 hover:underline">
-                        {req.initiator}
-                      </span>
-                      {/* Size */}
-                      <span className="w-16 truncate text-right text-[#9aa0a6]">{req.size}</span>
-                      {/* Time */}
-                      <span className="w-16 truncate text-right text-[#9aa0a6]">{req.time}</span>
-                      {/* Waterfall mini indicator */}
-                      <div className="relative w-24 h-2 ml-3 bg-[#292a2d] rounded-xs overflow-hidden">
-                        <span
-                          style={{
-                            left: `${req.waterfallOffset}%`,
-                            width: `${req.waterfallWidth}%`,
-                          }}
-                          className={`absolute top-0 bottom-0 rounded-xs ${
-                            req.waterfallColor === 'green'
-                              ? 'bg-[#81c995]'
-                              : req.waterfallColor === 'blue'
-                              ? 'bg-[#8ab4f8]'
-                              : req.waterfallColor === 'orange'
-                              ? 'bg-[#fdd663]'
-                              : 'bg-[#c58af9]'
-                          }`}
-                        />
+                  {filteredRequests.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center text-[#9aa0a6] text-xs gap-1 select-none p-4">
+                      <div className="font-sans font-medium text-[#bdc1c6]">Recording network activity…</div>
+                      <div className="font-sans text-[11px] text-[#5f6368]">
+                        Perform a request or hit ⟳ reload to record HTTP traffic.
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    filteredRequests.map((req) => (
+                      <div
+                        key={req.id}
+                        onClick={() => setSelectedRequest(req)}
+                        className={`flex h-5 items-center px-2 cursor-pointer transition-colors ${
+                          selectedRequest?.id === req.id
+                            ? 'bg-[#004a77] text-white'
+                            : 'hover:bg-[#28292c] text-[#e8eaed]'
+                        }`}
+                      >
+                        {/* Name with { } fetch icon */}
+                        <div className="flex w-[42%] items-center gap-1.5 truncate pr-2">
+                          <span className="text-[#f2994a] text-[9.5px] font-mono shrink-0">&lt;&gt;</span>
+                          <span className="truncate">{req.name}</span>
+                        </div>
+                        {/* Status */}
+                        <span
+                          className={`w-14 truncate ${
+                            req.status === 'FAIL' || (typeof req.status === 'number' && req.status >= 400)
+                              ? 'text-[#f28b82] font-semibold'
+                              : 'text-[#e8eaed]'
+                          }`}
+                        >
+                          {req.status}
+                        </span>
+                        {/* Type */}
+                        <span className="w-14 truncate text-[#9aa0a6]">{req.type}</span>
+                        {/* Initiator (Blue link) */}
+                        <span className="w-32 truncate text-[#8ab4f8] underline-offset-2 hover:underline">
+                          {req.initiator}
+                        </span>
+                        {/* Size */}
+                        <span className="w-16 truncate text-right text-[#9aa0a6]">{req.size}</span>
+                        {/* Time */}
+                        <span className="w-16 truncate text-right text-[#9aa0a6]">{req.time}</span>
+                        {/* Waterfall mini indicator */}
+                        <div className="relative w-24 h-2 ml-3 bg-[#292a2d] rounded-xs overflow-hidden">
+                          <span
+                            style={{
+                              left: `${req.waterfallOffset}%`,
+                              width: `${req.waterfallWidth}%`,
+                            }}
+                            className={`absolute top-0 bottom-0 rounded-xs ${
+                              req.waterfallColor === 'green'
+                                ? 'bg-[#81c995]'
+                                : req.waterfallColor === 'blue'
+                                ? 'bg-[#8ab4f8]'
+                                : req.waterfallColor === 'orange'
+                                ? 'bg-[#fdd663]'
+                                : 'bg-[#c58af9]'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 {/* Row 5: Exact Chrome DevTools Footer Status Line */}
                 <div className="flex h-5 shrink-0 items-center justify-between border-t border-[#3c4043] bg-[#292a2d] px-2 text-[9.5px] text-[#9aa0a6] font-sans">
                   <span>
-                    {filteredRequests.length} / 308 requests &nbsp;|&nbsp; 28.3 kB / 69.2 kB transferred &nbsp;|&nbsp; 16.9 kB / 13,599 kB resources
+                    {filteredRequests.length} requests &nbsp;|&nbsp;{' '}
+                    {filteredRequests.length > 0 ? `${(filteredRequests.length * 1.4).toFixed(1)} kB transferred` : '0 B transferred'}
                   </span>
                   <span>
-                    Finish: 6.99 s &nbsp;|&nbsp; <strong className="text-[#8ab4f8] font-normal">DOMContentLoaded: 781 ms</strong> &nbsp;|&nbsp; <strong className="text-[#f28b82] font-normal">Load: 975 ms</strong>
+                    {filteredRequests.length > 0 ? (
+                      <>
+                        Finish: 1.14 s &nbsp;|&nbsp; <strong className="text-[#8ab4f8] font-normal">DOMContentLoaded: 380 ms</strong> &nbsp;|&nbsp; <strong className="text-[#81c995] font-normal">Load: 520 ms</strong>
+                      </>
+                    ) : (
+                      'Idle'
+                    )}
                   </span>
                 </div>
               </div>
@@ -748,23 +722,22 @@ export default function AppPreview({
                     <span className="text-[#8ab4f8]">&lt;<span className="text-[#81c995]">html</span> <span className="text-[#fdd663]">dir</span>=<span className="text-[#8ab4f8]">"ltr"</span>&gt;</span>
                     <div className="pl-3">
                       <span className="text-[#8ab4f8]">&lt;<span className="text-[#81c995]">head</span>&gt;</span>
-                      <div className="pl-3 text-[#9aa0a6]">&lt;title&gt;Checkout Gate Service&lt;/title&gt;</div>
+                      <span className="text-[#9aa0a6] pl-2">&lt;!-- Page metadata --&gt;</span>
                       <span className="text-[#8ab4f8]">&lt;/<span className="text-[#81c995]">head</span>&gt;</span>
                     </div>
                     <div className="pl-3">
-                      <span className="text-[#8ab4f8]">&lt;<span className="text-[#81c995]">body</span> <span className="text-[#fdd663]">class</span>=<span className="text-[#8ab4f8]">"dark-theme"</span>&gt;</span>
-                      <div
-                        onClick={() => setSelectedElement('div#checkout-app')}
-                        className={`pl-3 cursor-pointer rounded px-1 ${
-                          selectedElement === 'div#checkout-app' ? 'bg-[#004a77] text-white' : 'hover:bg-[#35363a]'
-                        }`}
-                      >
-                        <span className="text-[#8ab4f8]">&lt;<span className="text-[#81c995]">div</span> <span className="text-[#fdd663]">id</span>=<span className="text-[#8ab4f8]">"checkout-app"</span>&gt;</span>
-                      </div>
-                      <div className="pl-6 text-[#9aa0a6]">&lt;header class="navbar"&gt;...&lt;/header&gt;</div>
-                      <div className="pl-6 text-[#9aa0a6]">&lt;main class="content"&gt;...&lt;/main&gt;</div>
-                      <div className="pl-3">
-                        <span className="text-[#8ab4f8]">&lt;/<span className="text-[#81c995]">div</span>&gt;</span>
+                      <span className="text-[#8ab4f8]">&lt;<span className="text-[#81c995]">body</span>&gt;</span>
+                      <div className="pl-3 text-[#e8eaed]">
+                        <div
+                          onClick={() => setSelectedElement('div#app')}
+                          className={`cursor-pointer rounded px-1 ${selectedElement === 'div#app' ? 'bg-[#004a77] text-white' : 'hover:bg-[#28292c]'}`}
+                        >
+                          &lt;<span className="text-[#81c995]">div</span> <span className="text-[#fdd663]">id</span>=<span className="text-[#8ab4f8]">"app"</span>&gt;
+                        </div>
+                        <div className="pl-4 text-[#9aa0a6]">
+                          &lt;<span className="text-[#81c995]">main</span> <span className="text-[#fdd663]">class</span>=<span className="text-[#8ab4f8]">"container"</span>&gt;...&lt;/<span className="text-[#81c995]">main</span>&gt;
+                        </div>
+                        <div className="pl-2">&lt;/<span className="text-[#81c995]">div</span>&gt;</div>
                       </div>
                       <span className="text-[#8ab4f8]">&lt;/<span className="text-[#81c995]">body</span>&gt;</span>
                     </div>
@@ -772,49 +745,45 @@ export default function AppPreview({
                   </div>
                 </div>
 
-                {/* Right: Styles & Box Model */}
-                <div className="w-[260px] shrink-0 overflow-y-auto p-2 bg-[#292a2d] text-[10px]">
-                  <div className="flex items-center justify-between border-b border-[#3c4043] pb-1 mb-2 text-[#e8eaed] font-sans font-medium">
-                    <span>Styles</span>
-                    <span className="text-[#9aa0a6]">Computed</span>
+                {/* Styles / Box Model side pane */}
+                <div className="w-56 shrink-0 overflow-y-auto p-2 bg-[#292a2d] text-[10.5px]">
+                  <div className="text-[#9aa0a6] uppercase text-[9px] font-sans font-bold pb-1 border-b border-[#3c4043]">
+                    Styles
                   </div>
-                  {/* Chrome Box Model */}
-                  <div className="my-1 flex flex-col items-center justify-center p-2 rounded bg-[#202124] border border-[#3c4043]">
-                    <div className="w-full text-center text-[9px] text-[#f8cba6] pb-0.5">margin: 0</div>
-                    <div className="w-[90%] bg-[#f8cba6]/15 border border-dashed border-[#f8cba6]/50 p-1.5 rounded flex flex-col items-center">
-                      <div className="text-[9px] text-[#f6e7b2] pb-0.5">border: 1px</div>
-                      <div className="w-[85%] bg-[#f6e7b2]/15 border border-[#f6e7b2]/50 p-1.5 rounded flex flex-col items-center">
-                        <div className="text-[9px] text-[#c4e3b7] pb-0.5">padding: 16px</div>
-                        <div className="w-[80%] bg-[#96c5f7]/25 border border-[#96c5f7]/60 py-1 text-center font-bold text-[#8ab4f8]">
-                          720 × 440
-                        </div>
-                      </div>
-                    </div>
+                  <div className="mt-2 text-[#e8eaed] font-mono leading-relaxed">
+                    <span className="text-[#8ab4f8]">element.style</span> &#123;<br/>
+                    &nbsp;&nbsp;<span className="text-[#fdd663]">display</span>: <span className="text-[#81c995]">flex</span>;<br/>
+                    &nbsp;&nbsp;<span className="text-[#fdd663]">min-height</span>: <span className="text-[#81c995]">100vh</span>;<br/>
+                    &#125;
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ─── 3. CONSOLE TAB (JS Evaluation + Logs) ─── */}
+            {/* ─── 3. CONSOLE TAB ─── */}
             {devToolsTab === 'Console' && (
               <div className="flex h-full flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto p-2 font-mono text-[10.5px] flex flex-col gap-1">
-                  {consoleLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className={`flex items-start gap-2 py-0.5 px-1 rounded ${
-                        log.type === 'error'
-                          ? 'bg-[#5c1d1d]/30 text-[#f28b82] border-l-2 border-[#f28b82]'
-                          : log.type === 'warn'
-                          ? 'bg-[#5c471d]/30 text-[#fdd663] border-l-2 border-[#fdd663]'
-                          : 'text-[#e8eaed]'
-                      }`}
-                    >
-                      <span className="text-[#9aa0a6] shrink-0">{log.time}</span>
-                      <span className="flex-1 break-words">{log.msg}</span>
-                      {log.source && <span className="text-[#9aa0a6] text-[9px] shrink-0">{log.source}</span>}
-                    </div>
-                  ))}
+                  {consoleLogs.length === 0 ? (
+                    <div className="text-[#9aa0a6] p-2">Console log is empty.</div>
+                  ) : (
+                    consoleLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className={`flex items-start gap-2 py-0.5 px-1 rounded ${
+                          log.type === 'error'
+                            ? 'bg-[#5c1d1d]/30 text-[#f28b82] border-l-2 border-[#f28b82]'
+                            : log.type === 'warn'
+                            ? 'bg-[#5c471d]/30 text-[#fdd663] border-l-2 border-[#fdd663]'
+                            : 'text-[#e8eaed]'
+                        }`}
+                      >
+                        <span className="text-[#9aa0a6] shrink-0">{log.time}</span>
+                        <span className="flex-1 break-words">{log.msg}</span>
+                        {log.source && <span className="text-[#9aa0a6] text-[9px] shrink-0">{log.source}</span>}
+                      </div>
+                    ))
+                  )}
                 </div>
                 <form onSubmit={handleExecuteConsole} className="flex h-7 shrink-0 items-center border-t border-[#3c4043] bg-[#292a2d] px-2">
                   <span className="text-[#8ab4f8] font-bold mr-1.5">&gt;</span>
@@ -835,17 +804,12 @@ export default function AppPreview({
                 <div className="w-44 shrink-0 overflow-y-auto p-2 bg-[#292a2d] text-[#e8eaed]">
                   <div className="text-[#9aa0a6] uppercase text-[9px] font-sans font-bold pb-1">Workspace</div>
                   <div className="pl-1 text-[#8ab4f8]">📁 src/</div>
-                  <div className="pl-4 text-[#81c995]">📄 routes/tasks.ts</div>
-                  <div className="pl-4 text-[#81c995]">📄 routes/checkout.ts</div>
+                  <div className="pl-4 text-[#81c995]">📄 App.tsx</div>
+                  <div className="pl-4 text-[#81c995]">📄 main.tsx</div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 bg-[#202124] text-[#e8eaed]">
-                  <div className="font-mono">
-                    <span className="text-[#fdd663]">import</span> &#123; FastifyInstance &#125; <span className="text-[#fdd663]">from</span> <span className="text-[#81c995]">'fastify'</span>;<br/>
-                    <span className="text-[#fdd663]">export default async function</span> checkoutRoutes(app: FastifyInstance) &#123;<br/>
-                    &nbsp;&nbsp;app.post(<span className="text-[#81c995]">"/api/checkout"</span>, <span className="text-[#fdd663]">async</span> (req, reply) =&gt; &#123;<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-[#fdd663]">return</span> &#123; success: <span className="text-[#8ab4f8]">true</span> &#125;;<br/>
-                    &nbsp;&nbsp;&#125;);<br/>
-                    &#125;
+                  <div className="font-mono text-[#9aa0a6]">
+                    Select a script on the left to debug or set breakpoints.
                   </div>
                 </div>
               </div>
@@ -867,8 +831,8 @@ export default function AppPreview({
                     <span className="flex-1 font-bold">Value</span>
                   </div>
                   <div className="flex py-1 border-b border-[#292a2d]">
-                    <span className="w-40 text-[#8ab4f8]">orion_session_token</span>
-                    <span className="flex-1 truncate text-[#e8eaed]">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</span>
+                    <span className="w-40 text-[#8ab4f8]">orion_session</span>
+                    <span className="flex-1 truncate text-[#e8eaed]">{sessionId}</span>
                   </div>
                 </div>
               </div>

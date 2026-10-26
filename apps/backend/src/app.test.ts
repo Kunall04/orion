@@ -304,4 +304,118 @@ describe('backend', () => {
       expect(capturedUrl).toBe('http://127.0.0.1:3000/dashboard/users?sort=asc');
     });
   });
+
+  describe('Terminal and Workspace Files API', () => {
+    it('POST /api/terminal runs a command against the session sandbox client', async () => {
+      const mockFetch: typeof fetch = async (input, init) => {
+        const url = String(input);
+        if (url.includes('/command')) {
+          return new Response(JSON.stringify({ output: 'node v20.14.0\n' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/terminal',
+        payload: { command: 'node -v', sessionId: 'term-sess-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.output).toContain('v20.14.0');
+    });
+
+    it('POST /api/terminal backgrounds dev server commands', async () => {
+      const mockFetch: typeof fetch = async (input, init) => {
+        return new Response(JSON.stringify({ output: '' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/terminal',
+        payload: { command: 'npm run dev', sessionId: 'term-sess-2' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.output).toContain('Started dev server in background');
+      expect(data.output).toContain('port 3000');
+    });
+
+    it('GET /sessions/:id/files lists project workspace files', async () => {
+      const mockFetch: typeof fetch = async (input, init) => {
+        const url = String(input);
+        if (url.includes('/command')) {
+          return new Response(JSON.stringify({ output: './package.json\n./src/index.ts\n./README.md\n' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/sessions/files-sess-1/files',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.files).toEqual(['package.json', 'src/index.ts', 'README.md']);
+    });
+
+    it('GET and POST /sessions/:id/file reads and writes workspace files', async () => {
+      let savedContent = '';
+      const mockFetch: typeof fetch = async (input, init) => {
+        const url = String(input);
+        if (url.includes('/read')) {
+          return new Response(JSON.stringify({ output: 'console.log("hello world");' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.includes('/write')) {
+          const body = JSON.parse(String(init?.body || '{}'));
+          savedContent = body.content;
+          return new Response(JSON.stringify({ output: 'Wrote 30 bytes to file.' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+
+      // Read file
+      const readRes = await app.inject({
+        method: 'GET',
+        url: '/sessions/file-sess-2/file?path=src/index.ts',
+      });
+      expect(readRes.statusCode).toBe(200);
+      expect(readRes.json().content).toBe('console.log("hello world");');
+
+      // Write file
+      const writeRes = await app.inject({
+        method: 'POST',
+        url: '/sessions/file-sess-2/file',
+        payload: { path: 'src/index.ts', content: 'console.log("updated");' },
+      });
+      expect(writeRes.statusCode).toBe(200);
+      expect(savedContent).toBe('console.log("updated");');
+    });
+  });
 });

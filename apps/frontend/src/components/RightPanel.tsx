@@ -365,7 +365,7 @@ export default function RightPanel({
         )}
         {tab === 'Terminal' && (
           <div className="h-full overflow-y-auto">
-            <InteractiveTerminal />
+            <InteractiveTerminal sessionId={sessionId} sandboxPort={sandboxPort} />
           </div>
         )}
         {tab === 'Preview' && (
@@ -379,7 +379,12 @@ export default function RightPanel({
           </div>
         )}
         <div className={`h-full flex flex-col ${tab === 'Editor' ? 'flex' : 'hidden'}`}>
-          <VSCodeIDE files={files} />
+          <VSCodeIDE
+            files={files}
+            sessionId={sessionId}
+            sandboxPort={sandboxPort}
+            onOpenTerminalTab={() => handleTabClick('Terminal')}
+          />
         </div>
       </div>
     </aside>

@@ -5,6 +5,7 @@ import { listInstallationRepos } from './github/repos';
 import { executeTask } from './agent/task-runner';
 import type { AgentEvent } from './agent/loop';
 import { SessionManager } from './session/manager';
+import { SandboxClient } from './sandbox/client';
 
 export interface InstallationRecord {
   installationId: string;
@@ -51,7 +52,11 @@ export interface BackendAppOptions {
 export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   const installations = options.installations ?? new Map<string, InstallationRecord>();
   const tasks = options.tasks ?? new Map<string, TaskRecord>();
-  const sessionManager = options.sessionManager ?? new SessionManager();
+  const sessionManager =
+    options.sessionManager ??
+    new SessionManager({
+      clientFactory: (url) => new SandboxClient({ baseUrl: url, fetch: options.fetch }),
+    });
   const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
   const autoExecute = options.autoExecuteTasks ?? true;
 
@@ -221,6 +226,136 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   });
 
   /**
+   * Terminal execution: runs commands inside the session sandbox.
+   */
+  app.post<{ Body: { command: string; sessionId?: string } }>(
+    '/api/terminal',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['command'],
+          properties: {
+            command: { type: 'string', minLength: 1 },
+            sessionId: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { command, sessionId } = req.body;
+      const targetSessionId = sessionId || 's1';
+      let session = sessionManager.getSession(targetSessionId);
+      if (!session) {
+        session = await sessionManager.getOrCreateSession(targetSessionId);
+      }
+      if (!session?.client) {
+        return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+      }
+
+      try {
+        const trimmed = command.trim();
+        let cmdToRun = trimmed;
+        if (/^(npm\s+(run\s+)?(dev|start)|yarn\s+(dev|start)|pnpm\s+(dev|start))$/.test(trimmed)) {
+          cmdToRun = `${trimmed} > /tmp/dev-server.log 2>&1 &`;
+        }
+
+        const output = await session.client.runCommand(cmdToRun);
+        const finalOutput =
+          cmdToRun !== trimmed
+            ? `[Started dev server in background]\n$ ${trimmed}\nServer running on port 3000. Logs routed to /tmp/dev-server.log`
+            : output;
+        return { ok: true, output: finalOutput };
+      } catch (err: any) {
+        return reply.status(500).send({ ok: false, error: err.message });
+      }
+    },
+  );
+
+  /**
+   * List files in the sandbox workspace for the Monaco IDE
+   */
+  app.get<{ Params: { id: string } }>('/sessions/:id/files', async (req, reply) => {
+    const sessionId = req.params.id;
+    let session = sessionManager.getSession(sessionId);
+    if (!session) {
+      session = await sessionManager.getOrCreateSession(sessionId);
+    }
+    if (!session?.client) {
+      return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+    }
+
+    try {
+      const output = await session.client.runCommand(
+        'find . -maxdepth 4 -not -path "*/.*" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" -type f | head -100',
+      );
+      const paths = output
+        .split('\n')
+        .map((p) => p.trim().replace(/^\.\//, ''))
+        .filter((p) => p.length > 0 && !p.startsWith('Error:'));
+      return { ok: true, files: paths };
+    } catch (err: any) {
+      return reply.status(500).send({ ok: false, error: err.message, files: [] });
+    }
+  });
+
+  /**
+   * Read file content from the sandbox workspace
+   */
+  app.get<{ Params: { id: string }; Querystring: { path: string } }>(
+    '/sessions/:id/file',
+    async (req, reply) => {
+      const sessionId = req.params.id;
+      const filePath = req.query.path;
+      if (!filePath) {
+        return reply.status(400).send({ ok: false, error: 'File path is required' });
+      }
+      let session = sessionManager.getSession(sessionId);
+      if (!session) {
+        session = await sessionManager.getOrCreateSession(sessionId);
+      }
+      if (!session?.client) {
+        return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+      }
+
+      try {
+        const content = await session.client.readFile(filePath);
+        return { ok: true, path: filePath, content };
+      } catch (err: any) {
+        return reply.status(500).send({ ok: false, error: err.message });
+      }
+    },
+  );
+
+  /**
+   * Save file content into the sandbox workspace
+   */
+  app.post<{ Params: { id: string }; Body: { path: string; content: string } }>(
+    '/sessions/:id/file',
+    async (req, reply) => {
+      const sessionId = req.params.id;
+      const { path: filePath, content } = req.body || {};
+      if (!filePath) {
+        return reply.status(400).send({ ok: false, error: 'File path is required' });
+      }
+      let session = sessionManager.getSession(sessionId);
+      if (!session) {
+        session = await sessionManager.getOrCreateSession(sessionId);
+      }
+      if (!session?.client) {
+        return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+      }
+
+      try {
+        const output = await session.client.writeFile(filePath, content ?? '');
+        return { ok: true, output };
+      } catch (err: any) {
+        return reply.status(500).send({ ok: false, error: err.message });
+      }
+    },
+  );
+
+  /**
    * Preview status check: reports whether a session's sandbox dev server is reachable
    */
   app.get<{ Params: { id: string }; Querystring: { port?: string } }>(
@@ -316,8 +451,33 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('text/html')) {
           let html = await res.text();
+          const spyScript = `<script>
+(function(){
+  try {
+    var of = window.fetch;
+    if (of) {
+      window.fetch = async function(...args) {
+        var t0 = performance.now();
+        var u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+        try {
+          var resp = await of.apply(this, args);
+          var dur = Math.round(performance.now() - t0);
+          window.parent.postMessage({ type: 'ORION_NETWORK_EVENT', request: { url: u, status: resp.status, time: dur } }, '*');
+          return resp;
+        } catch(e) {
+          var dur = Math.round(performance.now() - t0);
+          window.parent.postMessage({ type: 'ORION_NETWORK_EVENT', request: { url: u, status: 502, time: dur } }, '*');
+          throw e;
+        }
+      };
+    }
+  } catch(e){}
+})();
+</script>`;
           if (!html.includes('target.js')) {
-            html = html.replace('</head>', '<script src="//localhost:4001/target.js"></script></head>');
+            html = html.replace('</head>', `<script src="//localhost:4001/target.js"></script>${spyScript}</head>`);
+          } else {
+            html = html.replace('</head>', `${spyScript}</head>`);
           }
           return reply.send(html);
         }
@@ -366,10 +526,33 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       if (contentType.includes('text/html')) {
         let html = await res.text();
         const origin = new URL(target).origin;
+        const spyScript = `<script>
+(function(){
+  try {
+    var of = window.fetch;
+    if (of) {
+      window.fetch = async function(...args) {
+        var t0 = performance.now();
+        var u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+        try {
+          var resp = await of.apply(this, args);
+          var dur = Math.round(performance.now() - t0);
+          window.parent.postMessage({ type: 'ORION_NETWORK_EVENT', request: { url: u, status: resp.status, time: dur } }, '*');
+          return resp;
+        } catch(e) {
+          var dur = Math.round(performance.now() - t0);
+          window.parent.postMessage({ type: 'ORION_NETWORK_EVENT', request: { url: u, status: 502, time: dur } }, '*');
+          throw e;
+        }
+      };
+    }
+  } catch(e){}
+})();
+</script>`;
         if (!html.includes('<base')) {
-          html = html.replace('<head>', `<head><base href="${origin}/"><script src="//localhost:4001/target.js"></script>`);
+          html = html.replace('<head>', `<head><base href="${origin}/"><script src="//localhost:4001/target.js"></script>${spyScript}`);
         } else {
-          html = html.replace('<head>', `<head><script src="//localhost:4001/target.js"></script>`);
+          html = html.replace('<head>', `<head><script src="//localhost:4001/target.js"></script>${spyScript}`);
         }
         return reply.send(html);
       }
@@ -383,6 +566,14 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
 <head>
   <meta charset="utf-8">
   <title>Proxy Notice - ${target}</title>
+  <script>
+    try {
+      window.parent.postMessage({
+        type: 'ORION_NETWORK_EVENT',
+        request: { url: '${target}', status: 502, time: 64 }
+      }, '*');
+    } catch(e) {}
+  </script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #202124; color: #e8eaed; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; padding: 20px; }
     .card { background: #292a2d; border: 1px border #3c4043; border-radius: 12px; padding: 32px; max-width: 440px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }

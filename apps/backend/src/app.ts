@@ -427,7 +427,7 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       }
 
       try {
-        const content = await session.client.readFile(filePath);
+        const content = await session.client.readFile(filePath, 1, 100000);
         return { ok: true, path: filePath, content };
       } catch (err: any) {
         return reply.status(500).send({ ok: false, error: err.message });

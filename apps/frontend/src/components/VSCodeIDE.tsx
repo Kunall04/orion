@@ -7,6 +7,8 @@ import {
   getFileMeta,
   type FileTreeNode,
 } from '../utils/fileTree';
+import { stripCorruptLineNumbers } from '../utils/fileContent';
+export { stripCorruptLineNumbers };
 
 export interface TabFile {
   name: string;
@@ -48,13 +50,17 @@ export default function VSCodeIDE({
   const [containerWidth, setContainerWidth] = useState(800);
 
   // All workspace files
-  const [workspaceFiles, setWorkspaceFiles] = useState<TabFile[]>(files);
+  const [workspaceFiles, setWorkspaceFiles] = useState<TabFile[]>(() =>
+    files.map((f) => ({ ...f, content: stripCorruptLineNumbers(f.content) }))
+  );
 
   // Open tabs in the editor
   const [openTabs, setOpenTabs] = useState<TabFile[]>(() => {
     const welcome = files.find((f) => f.isWelcome) || DEFAULT_FILES[0]!;
     const firstCodeFile = files.find((f) => !f.isWelcome);
-    return firstCodeFile ? [firstCodeFile] : [welcome];
+    return firstCodeFile
+      ? [{ ...firstCodeFile, content: stripCorruptLineNumbers(firstCodeFile.content) }]
+      : [welcome];
   });
   const [activeTabIdx, setActiveTabIdx] = useState(0);
 
@@ -111,7 +117,7 @@ export default function VSCodeIDE({
   // Sync workspaceFiles when prop changes
   useEffect(() => {
     if (files && files.length > 0) {
-      setWorkspaceFiles(files);
+      setWorkspaceFiles(files.map((f) => ({ ...f, content: stripCorruptLineNumbers(f.content) })));
 
       const tree = buildFileTree(files);
       if (!hasInitializedExpandedDirs && tree.length > 0) {
@@ -125,7 +131,9 @@ export default function VSCodeIDE({
           const mainFile =
             files.find((f) => f.path.includes('App') || f.path.includes('index') || f.path.includes('main')) ||
             files.find((f) => !f.isWelcome);
-          if (mainFile) return [mainFile];
+          if (mainFile) {
+            return [{ ...mainFile, content: stripCorruptLineNumbers(mainFile.content) }];
+          }
         }
         return prev;
       });
@@ -143,11 +151,12 @@ export default function VSCodeIDE({
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!cancelled && data?.ok && typeof data.content === 'string') {
+            const cleanContent = stripCorruptLineNumbers(data.content);
             setOpenTabs((prev) =>
-              prev.map((f, i) => (i === activeTabIdx ? { ...f, content: data.content } : f))
+              prev.map((f, i) => (i === activeTabIdx ? { ...f, content: cleanContent } : f))
             );
             setWorkspaceFiles((prev) =>
-              prev.map((f) => (f.path === activeTab.path ? { ...f, content: data.content } : f))
+              prev.map((f) => (f.path === activeTab.path ? { ...f, content: cleanContent } : f))
             );
           }
         })
@@ -163,15 +172,19 @@ export default function VSCodeIDE({
   }, [activeTab?.path, sessionId]);
 
   const handleOpenFile = useCallback((targetFile: TabFile) => {
-    const existingIdx = openTabs.findIndex((t) => t.path === targetFile.path);
+    const cleanTarget = {
+      ...targetFile,
+      content: stripCorruptLineNumbers(targetFile.content),
+    };
+    const existingIdx = openTabs.findIndex((t) => t.path === cleanTarget.path);
     if (existingIdx !== -1) {
       setActiveTabIdx(existingIdx);
     } else if (openTabs.length === 1 && openTabs[0]?.isWelcome) {
-      setOpenTabs([targetFile]);
+      setOpenTabs([cleanTarget]);
       setActiveTabIdx(0);
     } else {
       setOpenTabs((prev) => {
-        const next = [...prev, targetFile];
+        const next = [...prev, cleanTarget];
         setActiveTabIdx(next.length - 1);
         return next;
       });
@@ -200,15 +213,16 @@ export default function VSCodeIDE({
   const handleSaveFile = async () => {
     if (!activeTab || activeTab.isWelcome || !sessionId) return;
     setIsSaving(true);
+    const cleanContent = stripCorruptLineNumbers(activeTab.content);
     try {
       const res = await fetch(`/sessions/${sessionId}/file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeTab.path, content: activeTab.content }),
+        body: JSON.stringify({ path: activeTab.path, content: cleanContent }),
       });
       if (res.ok) {
         setOpenTabs((prev) =>
-          prev.map((f, i) => (i === activeTabIdx ? { ...f, modified: false } : f))
+          prev.map((f, i) => (i === activeTabIdx ? { ...f, content: cleanContent, modified: false } : f))
         );
       }
     } catch {} finally {
@@ -817,7 +831,7 @@ export default function VSCodeIDE({
               height="100%"
               path={activeTab.path}
               language={activeTab.lang}
-              value={activeTab.content}
+              value={stripCorruptLineNumbers(activeTab.content)}
               theme="vs-dark"
               onChange={handleEditorChange}
               onMount={(editor) => {

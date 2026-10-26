@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SandboxClient } from './client';
@@ -139,5 +142,24 @@ describe('SandboxClient', () => {
     });
     const res = await deadClient.runCommand('ls');
     expect(res).toContain('Error connecting to sandbox: fetch failed');
+  });
+
+  it('readFile with local workDir fallback returns raw content without line number prefixes', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'sandbox-client-test-'));
+    try {
+      writeFileSync(join(tmpDir, 'test.txt'), 'line one\nline two\nline three');
+      const fallbackClient = new SandboxClient({
+        baseUrl: 'http://dead.local',
+        workDir: tmpDir,
+        fetch: async () => {
+          throw new Error('fetch failed');
+        },
+      });
+      const content = await fallbackClient.readFile('test.txt');
+      expect(content).toBe('line one\nline two\nline three');
+      expect(content).not.toMatch(/^\d+:/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

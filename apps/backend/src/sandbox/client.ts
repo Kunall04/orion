@@ -142,7 +142,7 @@ export class SandboxClient {
         const content = await fsReadFile(fullPath, 'utf8');
         const lines = content.split('\n');
         const slice = lines.slice(offset - 1, offset - 1 + limit);
-        return slice.map((l, i) => `${offset + i}: ${l}`).join('\n');
+        return slice.join('\n');
       } catch (err: any) {
         return `Error: File not found: ${path}`;
       }

@@ -379,6 +379,7 @@ export default function RightPanel({
             sessionId={sessionId}
             sandboxPort={sandboxPort}
             onOpenTerminalTab={() => handleTabClick('Terminal')}
+            repo={repo}
           />
         </div>
       </div>

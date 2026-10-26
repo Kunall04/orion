@@ -388,8 +388,8 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       if (!res.ok) {
         return reply.send({ ok: false, targets: [] });
       }
-      const data = await res.json();
-      return reply.send({ ok: true, targets: data.targets || [] });
+      const data = (await res.json()) as { targets?: unknown[] };
+      return reply.send({ ok: true, targets: data?.targets ?? [] });
     } catch {
       return reply.send({ ok: false, targets: [] });
     }

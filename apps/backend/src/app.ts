@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { TaskStatus } from '@cloud-agent/shared';
 import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './github/auth';
-import { listInstallationRepos } from './github/repos';
+import { cloneRepoToSandbox, listInstallationRepos } from './github/repos';
 import { executeTask } from './agent/task-runner';
 import type { AgentEvent } from './agent/loop';
 import { SessionManager } from './session/manager';
@@ -845,6 +845,174 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       };
     },
   );
+
+  /**
+   * Check GitHub App integration status and retrieve accessible repositories.
+   */
+  app.get('/api/github/status', async (_req, reply) => {
+    const appId = options.githubAppId ?? process.env.GITHUB_APP_ID;
+    const privateKey = options.githubPrivateKey ?? loadGitHubPrivateKey();
+    const slug = process.env.GITHUB_APP_SLUG ?? 'orion-coding-agent';
+    const installUrl = `https://github.com/apps/${slug}/installations/new`;
+
+    const storedInstallation = installations.values().next().value?.installationId;
+    const installationId = process.env.GITHUB_INSTALLATION_ID ?? storedInstallation;
+
+    if (!appId || !privateKey) {
+      return {
+        ok: true,
+        connected: false,
+        reason: 'GitHub App credentials not configured in backend',
+        installUrl,
+        repositories: [],
+      };
+    }
+
+    if (!installationId) {
+      return {
+        ok: true,
+        connected: false,
+        reason: 'No GitHub App installation found. Please install the app on your GitHub account.',
+        installUrl,
+        repositories: [],
+      };
+    }
+
+    try {
+      const jwt = createAppJwt(appId, privateKey);
+      const tokenRes = await mintInstallationToken(installationId, jwt, {
+        fetch: options.fetch,
+        baseUrl: options.githubBaseUrl,
+      });
+
+      const repos = await listInstallationRepos(tokenRes.token, {
+        fetch: options.fetch,
+        baseUrl: options.githubBaseUrl,
+      });
+
+      return {
+        ok: true,
+        connected: true,
+        installationId,
+        installUrl,
+        repositories: repos,
+      };
+    } catch (err: any) {
+      return {
+        ok: true,
+        connected: false,
+        error: err.message,
+        installUrl,
+        repositories: [],
+      };
+    }
+  });
+
+  /**
+   * Clone a GitHub repository directly into the session's sandbox workspace.
+   */
+  app.post<{ Params: { id: string }; Body: { repoFullName: string } }>(
+    '/sessions/:id/clone',
+    async (req, reply) => {
+      const sessionId = req.params.id;
+      const { repoFullName } = req.body || {};
+      if (!repoFullName) {
+        return reply.status(400).send({ ok: false, error: 'repoFullName is required' });
+      }
+
+      let session = sessionManager.getSession(sessionId);
+      if (!session) {
+        session = await sessionManager.getOrCreateSession(sessionId, repoFullName);
+      }
+      if (!session?.client) {
+        return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+      }
+
+      // 1. Clean existing workspace files
+      await session.client.runCommand('rm -rf ./* ./.[!.]*');
+
+      // 2. Try cloning using GitHub App installation token first (handles private repos)
+      const appId = options.githubAppId ?? process.env.GITHUB_APP_ID;
+      const installationId = process.env.GITHUB_INSTALLATION_ID;
+      const privateKey = options.githubPrivateKey ?? loadGitHubPrivateKey();
+
+      let cloneResult: { success: boolean; output: string } = { success: false, output: '' };
+
+      if (appId && installationId && privateKey) {
+        try {
+          const jwt = createAppJwt(appId, privateKey);
+          const tokenRes = await mintInstallationToken(installationId, jwt, {
+            fetch: options.fetch,
+            baseUrl: options.githubBaseUrl,
+          });
+          cloneResult = await cloneRepoToSandbox(session.client, repoFullName, tokenRes.token);
+        } catch {
+          // Token minting failed, fall back to public clone
+        }
+      }
+
+      // If token clone didn't run or failed, try standard public clone
+      if (!cloneResult.success) {
+        const cleanUrl = repoFullName.startsWith('http')
+          ? repoFullName
+          : `https://github.com/${repoFullName}.git`;
+        const res = await session.client.runCommand(`git clone ${cleanUrl} .`);
+        cloneResult = {
+          success: !res.includes('[exit code') && !res.startsWith('Error:'),
+          output: res,
+        };
+      }
+
+      if (!cloneResult.success) {
+        return reply.status(500).send({
+          ok: false,
+          error: `Failed to clone repository: ${cloneResult.output}`,
+        });
+      }
+
+      // Update session's repo attribute
+      session.repo = repoFullName;
+
+      // Update session metadata title if default
+      const meta = sessionMetadata.get(sessionId) || { messages: [] };
+      const repoShort = repoFullName.split('/').pop() || repoFullName;
+      meta.title = meta.title === 'New session' || !meta.title ? repoShort : meta.title;
+      sessionMetadata.set(sessionId, meta);
+      savePersistence();
+
+      return {
+        ok: true,
+        repo: repoFullName,
+        output: cloneResult.output,
+      };
+    },
+  );
+
+  /**
+   * Initialize a clean empty git repository in the session workspace.
+   */
+  app.post<{ Params: { id: string } }>('/sessions/:id/init-repo', async (req, reply) => {
+    const sessionId = req.params.id;
+    let session = sessionManager.getSession(sessionId);
+    if (!session) {
+      session = await sessionManager.getOrCreateSession(sessionId);
+    }
+    if (!session?.client) {
+      return reply.status(404).send({ ok: false, error: 'Session sandbox not found' });
+    }
+
+    await session.client.runCommand('rm -rf ./* ./.[!.]*');
+    const output = await session.client.runCommand(
+      'git init && echo "# Orion Project\\n\\nInitialized workspace." > README.md && git add README.md && git commit -m "chore: initial workspace commit"',
+    );
+
+    const meta = sessionMetadata.get(sessionId) || { messages: [] };
+    meta.title = 'Clean Workspace';
+    sessionMetadata.set(sessionId, meta);
+    savePersistence();
+
+    return { ok: true, output };
+  });
 
   /**
    * List all stored GitHub App installations.

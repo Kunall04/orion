@@ -7,12 +7,14 @@ export default function PromptBar({
   disabled,
   repo = 'workspace',
   branch = 'main',
+  onSelectRepo,
 }: {
   onSend?: (text: string) => void;
   onStop?: () => void;
   disabled?: boolean;
   repo?: string;
   branch?: string;
+  onSelectRepo?: () => void;
 }) {
   const [draft, setDraft] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -63,9 +65,9 @@ export default function PromptBar({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={handleCopyRepo}
-            title="Click to copy repository name"
-            className="flex h-6 items-center gap-1.5 rounded-chip border border-line bg-field px-2 text-[11.5px] text-ink-2 transition-colors duration-100 hover:bg-hover active:scale-95"
+            onClick={onSelectRepo ?? handleCopyRepo}
+            title="Click to select or clone a repository"
+            className="flex h-6 items-center gap-1.5 rounded-chip border border-line bg-field px-2 text-[11.5px] text-ink-2 transition-colors duration-100 hover:bg-hover hover:border-line-strong active:scale-95 cursor-pointer"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" />

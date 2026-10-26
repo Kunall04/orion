@@ -8,6 +8,7 @@ import OrionLogo from './components/OrionLogo';
 import ToastContainer, { showToast } from './components/Toast';
 import type { FileDiffItem } from './components/CodeDiffViewer';
 import { type TabFile, DEFAULT_FILES } from './components/VSCodeIDE';
+import RepoSelectorModal from './components/RepoSelectorModal';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ThinkingData {
@@ -312,7 +313,13 @@ function AgentTurnBubble({
 }
 
 /* ─── Empty state for new sessions ───────────────────────── */
-function EmptyState({ onSelectPrompt }: { onSelectPrompt: (p: string) => void }) {
+function EmptyState({
+  onSelectPrompt,
+  onOpenRepoModal,
+}: {
+  onSelectPrompt: (p: string) => void;
+  onOpenRepoModal?: () => void;
+}) {
   return (
     <div className="my-auto flex flex-col items-center justify-center gap-6 px-4 py-12 text-center" style={{ animation: 'fade-up 400ms cubic-bezier(0.23,1,0.32,1) both' }}>
       <div className="flex flex-col items-center gap-2">
@@ -326,6 +333,30 @@ function EmptyState({ onSelectPrompt }: { onSelectPrompt: (p: string) => void })
       </div>
 
       <div className="flex w-full max-w-[440px] flex-col gap-2">
+        {onOpenRepoModal && (
+          <button
+            type="button"
+            onClick={onOpenRepoModal}
+            className="flex items-center justify-between rounded-window border border-accent/40 bg-accent-tint/30 p-3 text-left shadow-btn transition-all duration-150 hover:bg-accent-tint/50 active:scale-[0.99] group cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-control bg-accent text-canvas">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="18" r="3" />
+                  <circle cx="6" cy="6" r="3" />
+                  <circle cx="18" cy="6" r="3" />
+                  <path d="M6 9v1a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9M12 12v3" />
+                </svg>
+              </div>
+              <div>
+                <span className="text-[13px] font-semibold text-accent">Select or Clone Repository</span>
+                <p className="text-[11.5px] text-ink-3">Pick an accessible repo from your GitHub App or clone any Git URL</p>
+              </div>
+            </div>
+            <span className="text-[13px] font-medium text-accent group-hover:translate-x-0.5 transition-transform">→</span>
+          </button>
+        )}
+
         {STARTER_PROMPTS.map((p) => (
           <button
             key={p.title}
@@ -456,10 +487,64 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showRepoModal, setShowRepoModal] = useState(false);
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || DEFAULT_CLEAN_SESSION;
+
+  const handleRepoSelected = (repoFullName: string) => {
+    const isClean = repoFullName === 'workspace';
+    const repoTitle = repoFullName.split('/').pop() || repoFullName;
+    const msgId = `agent-clone-${Date.now()}`;
+    const cloneMsg: ChatMsg = {
+      id: msgId,
+      role: 'agent',
+      thinking: { done: 'Repository ready' },
+      text: isClean
+        ? 'Initialized a clean git workspace. You can now prompt Orion to scaffold your project or run tests.'
+        : `Cloned **${repoFullName}** into sandbox workspace \`/workspace\`. Files are now loaded in the editor.`,
+    };
+
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? {
+              ...s,
+              repo: isClean ? undefined : repoFullName,
+              title: s.title === 'New session' ? repoTitle : s.title,
+              feed: [...s.feed, cloneMsg],
+            }
+          : s,
+      ),
+    );
+
+    // Refresh files in IDE
+    fetch(`/sessions/${activeSessionId}/files`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.files)) {
+          const workspaceFiles: TabFile[] = [
+            DEFAULT_FILES[0]!,
+            ...data.files.map((p: string) => {
+              const name = p.split('/').pop() || p;
+              let lang = 'plaintext';
+              if (p.endsWith('.ts') || p.endsWith('.tsx')) lang = 'typescript';
+              else if (p.endsWith('.js') || p.endsWith('.jsx')) lang = 'javascript';
+              else if (p.endsWith('.json')) lang = 'json';
+              else if (p.endsWith('.md')) lang = 'markdown';
+              else if (p.endsWith('.css')) lang = 'css';
+              else if (p.endsWith('.html')) lang = 'html';
+              return { name, path: p, lang, content: '' };
+            }),
+          ];
+          setSessions((prev) =>
+            prev.map((s) => (s.id === activeSessionId ? { ...s, files: workspaceFiles } : s)),
+          );
+        }
+      })
+      .catch(() => {});
+  };
 
   // Persist sessions to localStorage
   useEffect(() => {
@@ -1027,6 +1112,7 @@ export default function App() {
           onNewSession={handleNewSession}
           onDeleteSession={handleDeleteSession}
           onCollapse={() => setSidebarCollapsed((prev) => !prev)}
+          onOpenRepoModal={() => setShowRepoModal(true)}
         />
       </div>
 
@@ -1048,7 +1134,10 @@ export default function App() {
         {/* Feed */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {activeSession.feed.length === 0 ? (
-            <EmptyState onSelectPrompt={(prompt) => handleSend(prompt)} />
+            <EmptyState
+              onSelectPrompt={(prompt) => handleSend(prompt)}
+              onOpenRepoModal={() => setShowRepoModal(true)}
+            />
           ) : (
             <div className="mx-auto flex max-w-[600px] flex-col gap-5 px-4 py-6">
               {activeSession.feed.map((msg) => {
@@ -1081,6 +1170,7 @@ export default function App() {
               onStop={handleStop}
               disabled={isRunning && activeSession.status === 'running'}
               repo={activeSession.repo}
+              onSelectRepo={() => setShowRepoModal(true)}
             />
           </div>
         </div>
@@ -1100,6 +1190,15 @@ export default function App() {
         sessionId={activeSession.id}
         sandboxPort={activeSession.sandboxPort}
         onRunCommand={(cmd) => handleSend(cmd)}
+      />
+
+      {/* ── Repository & GitHub App Selector Modal ── */}
+      <RepoSelectorModal
+        isOpen={showRepoModal}
+        onClose={() => setShowRepoModal(false)}
+        activeSessionId={activeSessionId}
+        currentRepo={activeSession.repo}
+        onRepoSelected={handleRepoSelected}
       />
     </div>
   );

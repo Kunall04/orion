@@ -73,6 +73,34 @@ export default function VSCodeIDE({
   const [openEditorsExpanded, setOpenEditorsExpanded] = useState(true);
   const [projectRootExpanded, setProjectRootExpanded] = useState(true);
 
+  // Configure Monaco TypeScript/JSX options to suppress false-positive semantic errors
+  // for browser-only environment (e.g. missing node_modules/@types/react or missing JSX runtime)
+  const handleBeforeMount = useCallback((monaco: any) => {
+    if (!monaco?.languages?.typescript) return;
+
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      target: monaco.languages.typescript.ScriptTarget.ESNext,
+      allowNonTextExtensions: true,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      module: monaco.languages.typescript.ModuleKind.CommonJS,
+      noEmit: true,
+      esModuleInterop: true,
+      jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+      reactNamespace: 'React',
+      allowJs: true,
+    });
+
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: true,
+      noSyntaxValidation: false,
+    });
+
+    monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: true,
+      noSyntaxValidation: false,
+    });
+  }, []);
+
   // Search filter
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -833,12 +861,15 @@ export default function VSCodeIDE({
               language={activeTab.lang}
               value={stripCorruptLineNumbers(activeTab.content)}
               theme="vs-dark"
+              beforeMount={handleBeforeMount}
               onChange={handleEditorChange}
               onMount={(editor) => {
                 monacoEditorRef.current = editor;
-                editor.onDidChangeCursorPosition((e) => {
+                editor.onDidChangeCursorPosition((e: any) => {
                   setCursorPos({ line: e.position.lineNumber, col: e.position.column });
                 });
+                // Unfold all code sections so no lines are hidden by folded blocks
+                editor.getAction('editor.unfoldAll')?.run();
               }}
               options={{
                 fontSize: 12.5,
@@ -850,7 +881,9 @@ export default function VSCodeIDE({
                 lineNumbers: 'on',
                 lineNumbersMinChars: 3,
                 lineDecorationsWidth: 4,
-                glyphMargin: false,
+                glyphMargin: true,
+                folding: true,
+                showFoldingControls: 'always',
                 renderLineHighlight: 'all',
                 automaticLayout: true,
                 padding: { top: 8, bottom: 8 },

@@ -297,10 +297,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       const output = await session.client.runCommand(
         'find . -maxdepth 4 -not -path "*/.*" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" -type f | head -100',
       );
+      if (!output || output.trim() === '(no output)' || output.startsWith('Error:')) {
+        return { ok: true, files: [] };
+      }
       const paths = output
         .split('\n')
         .map((p) => p.trim().replace(/^\.\//, ''))
-        .filter((p) => p.length > 0 && !p.startsWith('Error:'));
+        .filter((p) => p.length > 0 && p !== '(no output)' && !p.startsWith('Error:'));
       return { ok: true, files: paths };
     } catch (err: any) {
       return reply.status(500).send({ ok: false, error: err.message, files: [] });

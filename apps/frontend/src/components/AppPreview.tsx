@@ -36,7 +36,7 @@ interface ConsoleLogItem {
 export default function AppPreview({
   sessionId = 's1',
   sandboxPort,
-  repo = 'Kunall04/agent-checkout-gate',
+  repo = 'workspace',
   onRunCommand,
 }: AppPreviewProps) {
   const [viewport, setViewport] = useState<ViewportMode>('desktop');

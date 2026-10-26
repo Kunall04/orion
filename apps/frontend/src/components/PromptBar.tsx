@@ -5,7 +5,7 @@ export default function PromptBar({
   onSend,
   onStop,
   disabled,
-  repo = 'Kunall04/agent-checkout-gate',
+  repo = 'workspace',
   branch = 'main',
 }: {
   onSend?: (text: string) => void;

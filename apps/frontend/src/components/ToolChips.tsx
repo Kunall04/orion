@@ -40,37 +40,10 @@ export type ToolChipsLabels = {
   more: string;
 };
 
-const DEFAULT_STEPS: ToolStep[] = [
-  {
-    icon: "run", label: "Clone repo", chip: "git clone", mono: true, detailMono: true,
-    detail: [{ text: "cloned Kunall04/agent-checkout-gate" }],
-  },
-  {
-    icon: "run", label: "Execute tests", chip: "npm test", mono: true, detailMono: true,
-    detail: [{ text: "34 checks passed in 1.4s" }],
-  },
-  {
-    icon: "write", label: "Apply changes", chip: "ORION_VERIFICATION.md", mono: true, detailMono: true,
-    detail: [{ text: "+ author verification with bot attribution", tone: "add" }],
-  },
-];
-
-const DEFAULT_DIFFS: ToolDiff[] = [
-  { file: "ORION_VERIFICATION.md", add: 12, del: 0 },
-];
-
-const DEFAULT_DIFF_LINES: Record<string, ToolDiffLine[]> = {
-  "ORION_VERIFICATION.md": [
-    { text: "# Orion Coding Agent Verification", tone: "add" },
-    { text: "- Status: Verified", tone: "add" },
-    { text: "- Bot: orion-coding-agent[bot]", tone: "add" },
-  ],
-};
-
 export default function ToolChips({
-  steps = DEFAULT_STEPS,
-  diffs = DEFAULT_DIFFS,
-  diffLines = DEFAULT_DIFF_LINES,
+  steps = [],
+  diffs = [],
+  diffLines = {},
   labels,
   className,
   onOpenChange,

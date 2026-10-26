@@ -16,72 +16,8 @@ export interface FileDiffItem {
   }>;
 }
 
-const DEFAULT_DIFFS: FileDiffItem[] = [
-  {
-    file: 'src/routes/tasks.test.ts',
-    add: 4,
-    del: 2,
-    status: 'modified',
-    hunks: [
-      {
-        header: '@@ -26,8 +26,10 @@ describe("POST /tasks rate limit")',
-        lines: [
-          { oldNo: 26, newNo: 26, type: 'ctx', text: '    const res = await app.inject({' },
-          { oldNo: 27, newNo: 27, type: 'ctx', text: '      method: "POST",' },
-          { oldNo: 28, newNo: 28, type: 'ctx', text: '      url: "/tasks",' },
-          { oldNo: 29, type: 'del', text: '-     payload: { instruction: "test" },' },
-          { oldNo: 30, type: 'del', text: '-     // Expected 200 without rate limiter' },
-          { newNo: 29, type: 'add', text: '+     payload: { instruction: "fix checkout gate" },' },
-          { newNo: 30, type: 'add', text: '+     headers: { "x-forwarded-for": "10.0.0.1" },' },
-          { newNo: 31, type: 'add', text: '+   });' },
-          { newNo: 32, type: 'add', text: '+   expect(res.statusCode).toBe(429);' },
-          { oldNo: 31, newNo: 33, type: 'ctx', text: '  });' },
-        ],
-      },
-    ],
-  },
-  {
-    file: 'ORION_VERIFICATION.md',
-    add: 7,
-    del: 0,
-    status: 'added',
-    hunks: [
-      {
-        header: '@@ -0,0 +1,7 @@',
-        lines: [
-          { newNo: 1, type: 'add', text: '+# Orion Coding Agent Verification' },
-          { newNo: 2, type: 'add', text: '+' },
-          { newNo: 3, type: 'add', text: '+- Task: Fix checkout rate-limit test' },
-          { newNo: 4, type: 'add', text: '+- Sandbox: Docker (orion-sandbox)' },
-          { newNo: 5, type: 'add', text: '+- Author: 344046298+orion-coding-agent[bot]' },
-          { newNo: 6, type: 'add', text: '+- Status: Verified (34/34 passing)' },
-          { newNo: 7, type: 'add', text: '+- PR: #142 against main' },
-        ],
-      },
-    ],
-  },
-  {
-    file: 'apps/backend/src/github/repos.ts',
-    add: 3,
-    del: 1,
-    status: 'modified',
-    hunks: [
-      {
-        header: '@@ -82,3 +82,5 @@ export async function configureGitUser()',
-        lines: [
-          { oldNo: 82, newNo: 82, type: 'ctx', text: '  await sandbox.runCommand("git config user.name \\"orion-coding-agent[bot]\\""' },
-          { oldNo: 83, type: 'del', text: '- await sandbox.runCommand("git config user.email \\"bot@noreply.github.com\\"");' },
-          { newNo: 83, type: 'add', text: '+ const botEmail = "344046298+orion-coding-agent[bot]@users.noreply.github.com";' },
-          { newNo: 84, type: 'add', text: '+ await sandbox.runCommand(`git config user.email "${botEmail}"`);' },
-          { oldNo: 84, newNo: 85, type: 'ctx', text: '}' },
-        ],
-      },
-    ],
-  },
-];
-
 export default function CodeDiffViewer({
-  files = DEFAULT_DIFFS,
+  files = [],
 }: {
   files?: FileDiffItem[];
 }) {

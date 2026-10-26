@@ -51,205 +51,83 @@ export interface SessionData extends SessionItem {
   files?: TabFile[];
 }
 
-/* ─── Initial Sessions (Matching Reference Image 2) ───────── */
-const INITIAL_SESSIONS: SessionData[] = [
-  {
-    id: 's1',
-    title: 'Fix checkout rate-limit test',
-    subtitle: 'Review PR',
-    pr: '#142',
-    prCount: 1,
-    status: 'done',
-    statusColor: 'orange',
-    time: '2m ago',
-    sandboxPort: 5001,
-    repo: 'Kunall04/agent-checkout-gate',
-    files: DEFAULT_FILES,
-    feed: [
-      {
-        id: 'msg-1',
-        role: 'user',
-        repo: 'Kunall04/agent-checkout-gate',
-        text: 'Fix the checkout rate-limit test and open a PR with bot commit attribution.',
-      },
-      {
-        id: 'msg-2',
-        role: 'agent',
-        thinking: {
-          variant: 'Coding',
-          done: 'Thought for 3 seconds',
-          rows: [
-            { primary: 'Inspecting test failure in tasks.test.ts', mono: true },
-            { primary: 'Configuring bot commit author in git environment', mono: true },
-            { primary: 'Opening Pull Request #142 against main', mono: true },
-          ],
-        },
-        toolSteps: [
-          {
-            icon: 'run',
-            label: 'Run tests',
-            chip: 'npm test',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: 'FAIL src/routes/tasks.test.ts (rate limit mismatch)' }],
-          },
-          {
-            icon: 'write',
-            label: 'Author fix',
-            chip: 'ORION_VERIFICATION.md',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: '+ author verification with bot attribution', tone: 'add' }],
-          },
-          {
-            icon: 'run',
-            label: 'Push branch',
-            chip: 'git push origin orion/fix-rate-limit',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: 'Branch orion/fix-rate-limit pushed to GitHub' }],
-          },
-        ],
-        diffs: [{ file: 'ORION_VERIFICATION.md', add: 12, del: 0 }],
-        actionCard: {
-          title: 'Fix checkout rate-limit test',
-          pr: 'agent-checkout-gate#142',
-          diff: '+14 -2',
-          bot: 'orion-coding-agent[bot]',
-        },
-        text: 'Done. I reproduced the failing rate limit test in the sandbox, updated tasks.test.ts, verified 34/34 passing checks, committed with bot attribution (344046298+orion-coding-agent[bot]), and opened PR #142 against main.',
-        actionPill: {
-          label: 'Run sandbox checks',
-          tag: 'Verified',
-        },
-        actionRequiredBanner: 'Action required: Review PR',
-      },
-    ],
-  },
-  {
-    id: 's2',
-    title: 'Make background black',
-    subtitle: 'Review PR',
-    pr: '#2',
-    prCount: 1,
-    status: 'done',
-    statusColor: 'orange',
-    time: '1h ago',
-    repo: 'fpbird/fpbird.github.io',
-    feed: [
-      {
-        id: 'msg-s2-1',
-        role: 'user',
-        repo: 'fpbird/fpbird.github.io',
-        text: 'fpbird/fpbird.github.io make background black',
-      },
-      {
-        id: 'msg-s2-2',
-        role: 'agent',
-        thinking: {
-          done: 'Thought for 6s',
-          rows: [
-            { primary: 'Scanning workspace css/airspace.css' },
-            { primary: 'Locating body background styling rule' },
-          ],
-        },
-        text: 'On it — making the site background black. Will find the relevant CSS/style and update it.',
-        toolSteps: [
-          {
-            icon: 'run',
-            label: 'Worked for 37s',
-            chip: '+1 file',
-            mono: true,
-            detailMono: true,
-            detail: [{ text: 'Updated css/airspace.css: background-color: #000000' }],
-          },
-        ],
-        actionCard: {
-          title: 'Make page background black',
-          pr: 'fpbird.github.io#2',
-          diff: '+1 -0',
-          bot: 'orion-coding-agent[bot]',
-        },
-      },
-      {
-        id: 'msg-s2-3',
-        role: 'agent',
-        thinking: {
-          done: 'Thought for 5s',
-          rows: [
-            { primary: 'Building Jekyll site preview' },
-            { primary: 'Rendering background color verification' },
-          ],
-        },
-        text: `Done — set the site background to black in css/airspace.css and opened fpbird.github.io#2 (Orion Review)\n\nWant me to test it by building the Jekyll site and confirming the black background renders? I can record myself doing it.`,
-        actionPill: {
-          label: 'Test the site',
-          tag: 'Beta',
-        },
-        actionRequiredBanner: 'Action required: Review PR',
-      },
-    ],
-  },
-  {
-    id: 's3',
-    title: 'Make school-cms background black',
-    subtitle: 'Test black background',
-    pr: '#1',
-    prCount: 1,
-    status: 'done',
-    statusColor: 'orange',
-    time: '1d ago',
-    repo: 'school-cms',
-    feed: [],
-  },
-  {
-    id: 's4',
-    title: 'Change fpbird.github.io background',
-    subtitle: 'Send next task',
-    pr: '#1',
-    prCount: 1,
-    status: 'done',
-    statusColor: 'orange',
-    time: '2d ago',
-    repo: 'fpbird/fpbird.github.io',
-    feed: [],
-  },
-  {
-    id: 's5',
-    title: 'Change background to black',
-    subtitle: 'PR is ready',
-    pr: '#1',
-    prCount: 1,
-    status: 'done',
-    statusColor: 'green',
-    time: '4d ago',
-    repo: 'fpbird',
-    feed: [],
-  },
-  {
-    id: 's6',
-    title: 'Review codes30/course-app#14',
-    subtitle: '11 days ago',
-    status: 'done',
-    statusColor: 'gray',
-    time: '11d ago',
-    repo: 'codes30/course-app',
-    feed: [],
-  },
-];
+/* ─── Storage Keys for Instant Local Persistence ─────────── */
+const STORAGE_KEY_SESSIONS = 'orion_sessions';
+const STORAGE_KEY_ACTIVE = 'orion_active_session_id';
+const STORAGE_KEY_TAB = 'orion_right_panel_tab';
+
+export const DEFAULT_CLEAN_SESSION: SessionData = {
+  id: 's1',
+  title: 'New session',
+  status: 'idle',
+  statusColor: 'gray',
+  time: 'Just now',
+  feed: [],
+  files: DEFAULT_FILES,
+};
+
+function loadSavedSessions(): SessionData[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SESSIONS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Discard legacy mock sessions if present in browser localStorage
+        const cleaned = parsed.filter(
+          (s: SessionData) =>
+            s.title !== 'Fix checkout rate-limit test' &&
+            s.title !== 'Make background black' &&
+            !s.title?.includes('fpbird.github.io') &&
+            !s.title?.includes('school-cms') &&
+            s.id !== 's2' &&
+            s.id !== 's3' &&
+            s.id !== 's4' &&
+            s.id !== 's5' &&
+            s.id !== 's6',
+        );
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse saved sessions from localStorage:', err);
+  }
+  return [DEFAULT_CLEAN_SESSION];
+}
+
+function loadSavedActiveSessionId(availableSessions: SessionData[]): string {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACTIVE);
+    if (raw && availableSessions.some((s) => s.id === raw)) {
+      return raw;
+    }
+  } catch {}
+  return availableSessions[0]?.id || 's1';
+}
+
+function loadSavedTab(): PanelTab {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TAB);
+    if (raw && ['Progress', 'Changes', 'PR', 'Editor', 'Terminal', 'Preview'].includes(raw)) {
+      return raw as PanelTab;
+    }
+  } catch {}
+  return 'Editor';
+}
 
 const STARTER_PROMPTS = [
   {
-    title: 'Fix checkout rate-limit test',
-    sub: 'Reproduce failing test in sandbox and patch assertion',
+    title: 'Explore workspace',
+    sub: 'Inspect files and directory structure in the sandbox container',
   },
   {
-    title: 'Make site background black',
-    sub: 'Update theme stylesheet and test Jekyll site rendering',
+    title: 'Run test suite',
+    sub: 'Run unit and integration tests and report any failures',
   },
   {
-    title: 'Add healthcheck probe',
-    sub: 'Expose /health/liveness and /health/readiness endpoints',
+    title: 'Start dev server',
+    sub: 'Launch the application dev server and verify the preview',
   },
 ];
 
@@ -572,16 +450,37 @@ function ChatHeader({
 /* ─── Main App ───────────────────────────────────────────── */
 export default function App() {
   const [isDark, setIsDark] = useState(true);
-  const [sessions, setSessions] = useState<SessionData[]>(INITIAL_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string>('s1');
-  const [rightPanelTab, setRightPanelTab] = useState<PanelTab>('Editor');
+  const [sessions, setSessions] = useState<SessionData[]>(loadSavedSessions);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => loadSavedActiveSessionId(sessions));
+  const [rightPanelTab, setRightPanelTab] = useState<PanelTab>(loadSavedTab);
   const [isTyping, setIsTyping] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0]!;
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || DEFAULT_CLEAN_SESSION;
+
+  // Persist sessions to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
+    } catch {}
+  }, [sessions]);
+
+  // Persist activeSessionId to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE, activeSessionId);
+    } catch {}
+  }, [activeSessionId]);
+
+  // Persist rightPanelTab to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_TAB, rightPanelTab);
+    } catch {}
+  }, [rightPanelTab]);
 
   const handleStop = () => {
     const es = eventSourcesRef.current.get(activeSessionId);
@@ -597,6 +496,7 @@ export default function App() {
   };
 
   const handleApprovePR = () => {
+    const prLabel = activeSession.pr || 'PR';
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeSessionId
@@ -609,14 +509,14 @@ export default function App() {
                 {
                   id: `agent-approve-${Date.now()}`,
                   role: 'agent',
-                  text: `Pull Request ${s.pr || '#142'} has been approved and merged into main. Sandbox verification confirmed.`,
+                  text: `Pull Request ${prLabel} has been approved and merged into main. Sandbox verification confirmed.`,
                 },
               ],
             }
           : s,
       ),
     );
-    showToast(`PR ${activeSession.pr || '#142'} approved and merged!`, 'success');
+    showToast(`PR ${prLabel} approved and merged!`, 'success');
   };
 
   const handleRetryTask = (msg: ChatMsg) => {
@@ -645,27 +545,52 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeSession.feed, isTyping]);
 
-  /* Fetch active sessions on mount to sync sandbox port info */
+  /* Fetch active sessions on mount to sync sandbox port info and backend history */
   useEffect(() => {
     fetch('/sessions')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.ok && Array.isArray(data.sessions) && data.sessions.length > 0) {
-          setSessions((prev) =>
-            prev.map((s) => {
+          setSessions((prev) => {
+            const updated = prev.map((s) => {
               const matched = data.sessions.find(
-                (bs: { id: string; sandbox?: { port: number; url: string } }) => bs.id === s.id,
+                (bs: { id: string; sandbox?: { port: number; url: string }; title?: string; messages?: any[] }) =>
+                  bs.id === s.id,
               );
-              if (matched?.sandbox) {
+              if (matched) {
                 return {
                   ...s,
-                  sandboxPort: matched.sandbox.port,
-                  sandboxUrl: matched.sandbox.url,
+                  title: s.title === 'New session' && matched.title ? matched.title : s.title,
+                  sandboxPort: matched.sandbox?.port ?? s.sandboxPort,
+                  sandboxUrl: matched.sandbox?.url ?? s.sandboxUrl,
+                  feed:
+                    s.feed.length === 0 && Array.isArray(matched.messages) && matched.messages.length > 0
+                      ? matched.messages
+                      : s.feed,
                 };
               }
               return s;
-            }),
-          );
+            });
+
+            // If backend has sessions not in local state, add them
+            for (const bs of data.sessions) {
+              if (!updated.some((s) => s.id === bs.id)) {
+                updated.push({
+                  id: bs.id,
+                  title: bs.title || 'Session',
+                  subtitle: 'Ready',
+                  status: 'idle',
+                  time: 'Saved',
+                  sandboxPort: bs.sandbox?.port,
+                  sandboxUrl: bs.sandbox?.url,
+                  repo: bs.repo,
+                  feed: Array.isArray(bs.messages) ? bs.messages : [],
+                  files: DEFAULT_FILES,
+                });
+              }
+            }
+            return updated;
+          });
         }
       })
       .catch(() => {});
@@ -737,7 +662,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: newId,
-          repo: 'Kunall04/agent-checkout-gate',
+          title: 'New session',
         }),
       });
       if (res.ok) {
@@ -757,7 +682,7 @@ export default function App() {
         }
       }
     } catch {
-      // Backend offline or mock fallback
+      // Backend offline or network error
     }
   };
 
@@ -834,7 +759,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instruction: text,
-          repo: activeSession.repo ?? 'Kunall04/agent-checkout-gate',
+          repo: activeSession.repo,
           sessionId: activeSessionId,
         }),
       });
@@ -1060,196 +985,32 @@ export default function App() {
         eventSourcesRef.current.delete(activeSessionId);
         eventSource.close();
       };
-    } catch (err) {
-      console.warn('Backend connection dropped, running clean fallback:', err);
-
-      const parseUserInstruction = (instruction: string) => {
-        const lower = instruction.toLowerCase();
-
-  if (lower.includes('git status') || (lower.includes('git') && lower.includes('status'))) {
-    const cmd = 'git status';
-    const output = `On branch orion/fix-rate-limit\nYour branch is up to date with 'origin/orion/fix-rate-limit'.\n\nChanges to be committed:\n  (use "git restore --staged <file>..." to unstage)\n\tmodified:   apps/backend/src/routes/tasks.test.ts\n\tnew file:   ORION_VERIFICATION.md`;
-    return {
-      cmd,
-      label: 'Run command',
-      chip: 'git status',
-      output,
-      thinking: [
-        { primary: 'Running git status in sandbox /workspace', mono: true },
-        { primary: 'Inspecting staged and modified working tree', mono: true },
-      ],
-      text: `Ran \`git status\` in the sandbox terminal:\n\nOn branch \`orion/fix-rate-limit\`. Working tree has 2 files staged for commit (\`tasks.test.ts\` and \`ORION_VERIFICATION.md\`).`,
-    };
-  }
-
-  if (lower.includes('git diff')) {
-    const cmd = 'git diff';
-    const output = `diff --git a/apps/backend/src/routes/tasks.test.ts b/apps/backend/src/routes/tasks.test.ts\n--- a/apps/backend/src/routes/tasks.test.ts\n+++ b/apps/backend/src/routes/tasks.test.ts\n@@ -21,11 +21,11 @@ describe('POST /tasks rate limit verification', () => {\n-    // Rate limit not asserted\n+    // Rate limiter enforces 429 when threshold is reached\n+    expect(res.statusCode).toBe(429);`;
-    return {
-      cmd,
-      label: 'View diff',
-      chip: 'git diff',
-      output,
-      thinking: [
-        { primary: 'Comparing workspace unstaged modifications', mono: true },
-        { primary: 'Generating unified git diff', mono: true },
-      ],
-      text: `Executed \`git diff\` in the sandbox terminal. Displayed rate-limiting assertions in \`tasks.test.ts\`.`,
-    };
-  }
-
-  if (lower.includes('git branch')) {
-    const cmd = 'git branch';
-    const output = `  main\n* orion/fix-rate-limit`;
-    return {
-      cmd,
-      label: 'List branches',
-      chip: 'git branch',
-      output,
-      thinking: [{ primary: 'Listing git branches in /workspace', mono: true }],
-      text: `Active branch is \`orion/fix-rate-limit\` (tracking \`origin/orion/fix-rate-limit\`).`,
-    };
-  }
-
-  if (lower.includes('git log')) {
-    const cmd = 'git log -n 3 --oneline';
-    const output = `2eaa1dc feat(dashboard): match reference layout\n54b28d1 feat(dashboard): integrate embedded VSCode IDE\n82c3212 feat: add interactive terminal and file tree`;
-    return {
-      cmd,
-      label: 'Git log',
-      chip: 'git log -n 3',
-      output,
-      thinking: [{ primary: 'Reading recent commit history', mono: true }],
-      text: `Recent commit history retrieved from git repository.`,
-    };
-  }
-
-  if (lower.includes('test') || lower.includes('vitest') || lower.includes('npm test')) {
-    const cmd = 'npm test';
-    const output = `> vitest run\n✓ src/routes/tasks.test.ts (12 tests) 341ms\n✓ src/agent/loop.test.ts (8 tests) 288ms\n✓ src/tools/sandbox.test.ts (14 tests) 1432ms\n\nTest Files  3 passed (3)\nTests       34 passed (34)\nDuration    1.82s`;
-    return {
-      cmd,
-      label: 'Run tests',
-      chip: 'npm test',
-      output,
-      thinking: [
-        { primary: 'Inspecting repository test suite', mono: true },
-        { primary: 'Running vitest verification in container', mono: true },
-      ],
-      text: `Ran vitest test suite in Docker sandbox. 34/34 checks passed cleanly in 1.82s.`,
-    };
-  }
-
-  if (lower.includes('ls') || lower.includes('list files')) {
-    const cmd = 'ls -la';
-    const output = `total 48\ndrwxr-xr-x  12 ubuntu ubuntu  384 Oct 19 14:40 .\ndrwxr-xr-x   3 root   root    96  Oct 19 14:00 ..\n-rw-r--r--   1 ubuntu ubuntu 1205 Oct 19 14:20 ORION_VERIFICATION.md\ndrwxr-xr-x   4 ubuntu ubuntu  128 Oct 19 14:00 apps\n-rw-r--r--   1 ubuntu ubuntu  840 Oct 19 14:00 package.json`;
-    return {
-      cmd,
-      label: 'List files',
-      chip: 'ls -la',
-      output,
-      thinking: [{ primary: 'Listing workspace files in container', mono: true }],
-      text: `Workspace contents listed for /workspace.`,
-    };
-  }
-
-  if (lower.includes('dev') || lower.includes('npm run dev') || lower.includes('start')) {
-    return {
-      cmd: 'npm run dev',
-      label: 'Run command',
-      chip: 'npm run dev',
-      output: `npm error code ENOENT\nnpm error syscall open\nnpm error path /workspace/package.json\nnpm error errno -2\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/workspace/package.json'\n[exit code 1]`,
-      thinking: [
-        { primary: 'Executing npm run dev in /workspace', mono: true },
-        { primary: 'Inspecting package.json and scripts', mono: true },
-      ],
-      text: 'Failed to run `npm run dev`: No `package.json` found in `/workspace`. The workspace is currently empty. Please add your project files or clone a repository first.',
-    };
-  }
-
-  if (
-    lower.includes('no file') ||
-    lower.includes('nothing') ||
-    lower.includes('empty') ||
-    lower.includes('how')
-  ) {
-    return {
-      cmd: 'ls -la',
-      label: 'Inspect workspace',
-      chip: 'ls -la',
-      output: 'total 0',
-      thinking: [
-        { primary: 'Checking workspace directory /workspace', mono: true },
-      ],
-      text: 'You are right — there are currently no files in the workspace. No package.json or source code exists in /workspace, so `npm run dev` cannot run until project files are initialized or cloned.',
-    };
-  }
-
-  // Generic fallback when workspace is empty
-  return {
-    cmd: 'ls -la',
-    label: 'Inspect workspace',
-    chip: 'ls -la',
-    output: 'total 0',
-    thinking: [
-      { primary: `Analyzing instruction "${instruction}"`, mono: true },
-      { primary: 'Checking /workspace files', mono: true },
-    ],
-    text: `Cannot execute "${instruction}": The workspace is currently empty. Please clone a repository or create files in the workspace first.`,
-  };
-}
-
-      const parsed = parseUserInstruction(text);
-
-      // Dispatch to VS Code terminal on the right so terminal executes live!
-      window.dispatchEvent(
-        new CustomEvent('orion:terminal-command', {
-          detail: {
-            command: parsed.cmd,
-            output: parsed.output,
-          },
-        }),
+    } catch (err: any) {
+      console.warn('Backend connection dropped:', err);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? {
+                ...s,
+                status: 'idle',
+                statusColor: 'orange',
+                feed: s.feed.map((msg) =>
+                  msg.id === agentTurnId
+                    ? {
+                        ...msg,
+                        thinking: {
+                          done: 'Failed',
+                          rows: [{ primary: 'Backend server connection error' }],
+                        },
+                        text: `Unable to run task: ${err?.message || 'Cannot communicate with backend server'}. Please ensure the backend is running.`,
+                      }
+                    : msg,
+                ),
+              }
+            : s,
+        ),
       );
-
-      if (parsed.cmd === 'git diff') {
-        setRightPanelTab('Changes');
-      }
-
-      setTimeout(() => {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSessionId
-              ? {
-                  ...s,
-                  status: 'done',
-                  feed: s.feed.map((msg) =>
-                    msg.id === agentTurnId
-                      ? {
-                          ...msg,
-                          thinking: {
-                            done: 'Thought for 2 seconds',
-                            rows: parsed.thinking,
-                          },
-                          toolSteps: [
-                            {
-                              icon: 'run',
-                              label: parsed.label,
-                              chip: parsed.chip,
-                              mono: true,
-                              detailMono: true,
-                              detail: [{ text: parsed.output }],
-                            },
-                          ],
-                          text: parsed.text,
-                        }
-                      : msg,
-                  ),
-                }
-              : s,
-          ),
-        );
-        setIsRunning(false);
-      }, 700);
+      setIsRunning(false);
     }
   };
 

@@ -1,4 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { TaskStatus } from '@cloud-agent/shared';
 import { createAppJwt, loadGitHubPrivateKey, mintInstallationToken } from './github/auth';
 import { listInstallationRepos } from './github/repos';
@@ -43,6 +46,8 @@ export interface BackendAppOptions {
   autoExecuteTasks?: boolean;
   /** Optional SessionManager for multi-session sandbox isolation */
   sessionManager?: SessionManager;
+  /** Optional persistence file path (pass null to disable) */
+  persistenceFile?: string | null;
 }
 
 /**
@@ -60,6 +65,53 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     });
   const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
   const autoExecute = options.autoExecuteTasks ?? true;
+
+  const sessionMetadata = new Map<string, { title?: string; messages: any[] }>();
+  const isTest = process.env.NODE_ENV === 'test' || options.fetch !== undefined;
+  const persistenceFile =
+    options.persistenceFile === null || (options.persistenceFile === undefined && isTest)
+      ? null
+      : (options.persistenceFile ?? join(tmpdir(), 'orion-workspaces', 'persistence.json'));
+
+  function loadPersistence() {
+    if (!persistenceFile) return;
+    try {
+      if (existsSync(persistenceFile)) {
+        const raw = readFileSync(persistenceFile, 'utf8');
+        const data = JSON.parse(raw);
+        if (Array.isArray(data.sessions)) {
+          for (const s of data.sessions) {
+            if (s.id && !sessionMetadata.has(s.id)) {
+              sessionMetadata.set(s.id, {
+                title: s.title,
+                messages: Array.isArray(s.messages) ? s.messages : [],
+              });
+              sessionManager.getOrCreateSession(s.id, s.repo).catch(() => {});
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  function savePersistence() {
+    if (!persistenceFile) return;
+    try {
+      mkdirSync(dirname(persistenceFile), { recursive: true });
+      const data = {
+        sessions: sessionManager.listSessions().map((s) => ({
+          id: s.id,
+          repo: s.repo,
+          title: sessionMetadata.get(s.id)?.title,
+          messages: sessionMetadata.get(s.id)?.messages || [],
+          createdAt: s.createdAt,
+        })),
+      };
+      writeFileSync(persistenceFile, JSON.stringify(data, null, 2), 'utf8');
+    } catch {}
+  }
+
+  loadPersistence();
 
   const app = Fastify({ logger: false });
 
@@ -155,19 +207,24 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   app.get('/sessions', async () => {
     return {
       ok: true,
-      sessions: sessionManager.listSessions().map((s) => ({
-        id: s.id,
-        repo: s.repo,
-        sandbox: s.sandbox,
-        createdAt: s.createdAt,
-      })),
+      sessions: sessionManager.listSessions().map((s) => {
+        const meta = sessionMetadata.get(s.id);
+        return {
+          id: s.id,
+          title: meta?.title,
+          repo: s.repo,
+          sandbox: s.sandbox,
+          createdAt: s.createdAt,
+          messages: meta?.messages ?? [],
+        };
+      }),
     };
   });
 
   /**
    * Create or retrieve a session with a dedicated sandbox
    */
-  app.post<{ Body: { id: string; repo?: string } }>(
+  app.post<{ Body: { id: string; repo?: string; title?: string } }>(
     '/sessions',
     {
       schema: {
@@ -177,13 +234,19 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
           properties: {
             id: { type: 'string', minLength: 1 },
             repo: { type: 'string' },
+            title: { type: 'string' },
           },
         },
       },
     },
     async (req) => {
-      const { id, repo } = req.body;
+      const { id, repo, title } = req.body;
       const session = await sessionManager.getOrCreateSession(id, repo);
+      if (title) {
+        const existingMeta = sessionMetadata.get(id) || { messages: [] };
+        sessionMetadata.set(id, { ...existingMeta, title });
+      }
+      savePersistence();
       return {
         ok: true,
         session: {
@@ -204,16 +267,48 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     if (!session) {
       return reply.status(404).send({ ok: false, error: 'Session not found' });
     }
+    const meta = sessionMetadata.get(req.params.id);
     return {
       ok: true,
       session: {
         id: session.id,
+        title: meta?.title,
         repo: session.repo,
         sandbox: session.sandbox,
         createdAt: session.createdAt,
+        messages: meta?.messages ?? [],
       },
     };
   });
+
+  /**
+   * Get session message history
+   */
+  app.get<{ Params: { id: string } }>('/sessions/:id/messages', async (req) => {
+    const meta = sessionMetadata.get(req.params.id);
+    return { ok: true, messages: meta?.messages ?? [] };
+  });
+
+  /**
+   * Save session message history
+   */
+  app.post<{ Params: { id: string }; Body: { messages?: any[]; message?: any; title?: string } }>(
+    '/sessions/:id/messages',
+    async (req) => {
+      const { id } = req.params;
+      const { messages, message, title } = req.body || {};
+      const meta = sessionMetadata.get(id) || { messages: [] };
+      if (title) meta.title = title;
+      if (Array.isArray(messages)) {
+        meta.messages = messages;
+      } else if (message) {
+        meta.messages = [...meta.messages, message];
+      }
+      sessionMetadata.set(id, meta);
+      savePersistence();
+      return { ok: true };
+    },
+  );
 
   /**
    * Terminate session and release its sandbox
@@ -223,6 +318,8 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     if (!terminated) {
       return reply.status(404).send({ ok: false, error: 'Session not found' });
     }
+    sessionMetadata.delete(req.params.id);
+    savePersistence();
     return { ok: true, terminated: true };
   });
 

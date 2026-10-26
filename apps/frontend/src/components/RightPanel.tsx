@@ -62,21 +62,21 @@ const TAB_CONFIG: Record<
 };
 
 function ProgressView({ steps }: { steps?: Array<{ title: string; desc: string; time?: string }> }) {
-  const defaultSteps = [
-    { title: 'Task Initialized', desc: 'Received instruction: "Fix checkout rate-limit test and add bot commit author"', time: '0.1s' },
-    { title: 'Sandbox Bootstrapped', desc: 'Started Docker microcontainer orion-box (port 5001)', time: '0.4s' },
-    { title: 'Cloned Repository', desc: 'git clone https://github.com/Kunall04/agent-checkout-gate (workspace: /workspace)', time: '0.8s' },
-    { title: 'Executed Test Suite', desc: 'vitest run → FAIL src/routes/tasks.test.ts (rate limit assertion 429 missing)', time: '1.2s' },
-    { title: 'Synthesized Fix with LLM', desc: 'Groq LLaMA 3.3 70B generated updated route tests and bot attribution setup', time: '1.9s' },
-    { title: 'Patched Test Suite', desc: 'Updated apps/backend/src/routes/tasks.test.ts (+12, -2)', time: '0.2s' },
-    { title: 'Created Verification Spec', desc: 'Wrote ORION_VERIFICATION.md documentation', time: '0.1s' },
-    { title: 'Re-ran Verification in Sandbox', desc: 'vitest run → 34 passed (34 checks clean in 1.4s)', time: '1.4s' },
-    { title: 'Committed as Bot Author', desc: 'git commit -m "feat: configure bot user ID attribution" (author: 344046298+orion-coding-agent[bot])', time: '0.3s' },
-    { title: 'Pushed to GitHub', desc: 'git push origin orion/fix-rate-limit', time: '0.7s' },
-    { title: 'Opened Pull Request #142', desc: 'Merged into main branch ready for human-in-the-loop signoff', time: '0.5s' },
-  ];
-
-  const renderSteps = steps && steps.length > 0 ? steps : defaultSteps;
+  if (!steps || steps.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-field/60 text-ink-3">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+        </div>
+        <span className="mt-3 text-[13px] font-medium text-ink">No execution progress</span>
+        <span className="mt-1 max-w-[220px] text-[11.5px] text-ink-3">
+          Tool calls, sandbox commands, and agent decisions will stream here live during task execution.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -86,11 +86,11 @@ function ProgressView({ steps }: { steps?: Array<{ title: string; desc: string; 
           <h4 className="text-[13px] font-semibold text-ink">Agent Execution Progress</h4>
         </div>
         <span className="rounded bg-surface px-2 py-0.5 font-mono text-[10px] text-ink-3 shadow-hairline">
-          Total: {renderSteps.length} steps
+          Total: {steps.length} steps
         </span>
       </div>
       <div className="flex flex-col gap-1.5 pt-1">
-        {renderSteps.map((s, idx) => (
+        {steps.map((s, idx) => (
           <div key={idx} className="flex items-start gap-2.5 rounded-control p-2 hover:bg-hover transition-colors">
             <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green/15 text-[10px] font-bold text-green">
               ✓
@@ -110,9 +110,9 @@ function ProgressView({ steps }: { steps?: Array<{ title: string; desc: string; 
 }
 
 function PRView({
-  pr = '#142',
-  sessionTitle = 'Fix checkout rate-limit test and add bot commit author',
-  repo = 'agent-checkout-gate',
+  pr,
+  sessionTitle = 'Pull Request',
+  repo,
   onApprove,
 }: {
   pr?: string;
@@ -120,12 +120,21 @@ function PRView({
   repo?: string;
   onApprove?: () => void;
 }) {
-  const commits = [
-    { sha: 'a3f2b1c', msg: 'feat(github): configure bot user ID attribution' },
-    { sha: 'd9e4f5a', msg: 'fix(tests): add ORION_VERIFICATION.md' },
-    { sha: '7c1a2b3', msg: 'test: ensure sandbox runner exits cleanly' },
-    { sha: 'e6d0f2a', msg: 'chore: bump Groq SDK to 0.8.0' },
-  ];
+  if (!pr) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-field/60 text-ink-3">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M13 6h3a2 2 0 0 1 2 2v7" /><line x1="6" y1="9" x2="6" y2="21" />
+          </svg>
+        </div>
+        <span className="mt-3 text-[13px] font-medium text-ink">No Pull Request active</span>
+        <span className="mt-1 max-w-[220px] text-[11.5px] text-ink-3">
+          When Orion completes a task and opens a pull request, review and approval controls will appear here.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -141,27 +150,13 @@ function PRView({
         </div>
         <p className="text-[11.5px] text-ink-3">
           <span className="font-mono text-accent">{pr}</span>
-          {' '}· <span className="font-mono">orion-coding-agent[bot]</span> wants to merge
-          {' '}<span className="font-mono text-ink-2">{commits.length} commits</span> into <span className="font-mono text-ink-2">main</span>
+          {repo ? ` · ${repo}` : ''}
+          {' '}· <span className="font-mono">orion-coding-agent[bot]</span>
         </p>
       </div>
 
       {/* Approval card */}
       <ApprovalCard onSubmitted={() => onApprove?.()} />
-
-      {/* Commit list */}
-      <div className="flex flex-col gap-1">
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Commits ({commits.length})</p>
-        {commits.map((c) => (
-          <div key={c.sha} className="flex items-center gap-2 rounded-control px-2.5 py-1.5 hover:bg-hover transition-colors">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-ink-3">
-              <circle cx="12" cy="12" r="3" /><line x1="3" y1="12" x2="9" y2="12" /><line x1="15" y1="12" x2="21" y2="12" />
-            </svg>
-            <span className="font-mono text-[10.5px] text-accent">{c.sha}</span>
-            <span className="min-w-0 truncate text-[12px] text-ink-2">{c.msg}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

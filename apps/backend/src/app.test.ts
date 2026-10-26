@@ -353,6 +353,29 @@ describe('backend', () => {
       expect(data.output).toContain('port 3000');
     });
 
+    it('POST /api/terminal returns ENOENT error when npm run dev is run without package.json', async () => {
+      const mockFetch: typeof fetch = async (input, init) => {
+        const url = String(input);
+        if (url.includes('/read')) {
+          return new Response('File not found', { status: 404 });
+        }
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/terminal',
+        payload: { command: 'npm run dev', sessionId: 'empty-term-sess' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.output).toContain('npm error code ENOENT');
+      expect(data.output).toContain('Could not read package.json');
+    });
+
     it('GET /sessions/:id/files lists project workspace files', async () => {
       const mockFetch: typeof fetch = async (input, init) => {
         const url = String(input);

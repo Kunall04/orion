@@ -1153,17 +1153,49 @@ export default function App() {
     };
   }
 
-  // Generic fallback for coding instructions
+  if (lower.includes('dev') || lower.includes('npm run dev') || lower.includes('start')) {
+    return {
+      cmd: 'npm run dev',
+      label: 'Run command',
+      chip: 'npm run dev',
+      output: `npm error code ENOENT\nnpm error syscall open\nnpm error path /workspace/package.json\nnpm error errno -2\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/workspace/package.json'\n[exit code 1]`,
+      thinking: [
+        { primary: 'Executing npm run dev in /workspace', mono: true },
+        { primary: 'Inspecting package.json and scripts', mono: true },
+      ],
+      text: 'Failed to run `npm run dev`: No `package.json` found in `/workspace`. The workspace is currently empty. Please add your project files or clone a repository first.',
+    };
+  }
+
+  if (
+    lower.includes('no file') ||
+    lower.includes('nothing') ||
+    lower.includes('empty') ||
+    lower.includes('how')
+  ) {
+    return {
+      cmd: 'ls -la',
+      label: 'Inspect workspace',
+      chip: 'ls -la',
+      output: 'total 0',
+      thinking: [
+        { primary: 'Checking workspace directory /workspace', mono: true },
+      ],
+      text: 'You are right — there are currently no files in the workspace. No package.json or source code exists in /workspace, so `npm run dev` cannot run until project files are initialized or cloned.',
+    };
+  }
+
+  // Generic fallback when workspace is empty
   return {
-    cmd: 'npm test',
-    label: 'Run verification',
-    chip: 'npm test',
-    output: `34 checks passed in 1.4s`,
+    cmd: 'ls -la',
+    label: 'Inspect workspace',
+    chip: 'ls -la',
+    output: 'total 0',
     thinking: [
       { primary: `Analyzing instruction "${instruction}"`, mono: true },
-      { primary: 'Running sandbox container verification', mono: true },
+      { primary: 'Checking /workspace files', mono: true },
     ],
-    text: `Executed task: "${instruction}". Verified Kunall04/agent-checkout-gate cleanly in sandbox.`,
+    text: `Cannot execute "${instruction}": The workspace is currently empty. Please clone a repository or create files in the workspace first.`,
   };
 }
 

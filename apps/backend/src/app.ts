@@ -55,7 +55,8 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   const sessionManager =
     options.sessionManager ??
     new SessionManager({
-      clientFactory: (url) => new SandboxClient({ baseUrl: url, fetch: options.fetch }),
+      clientFactory: (url, workDir) =>
+        new SandboxClient({ baseUrl: url, workDir, fetch: options.fetch }),
     });
   const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
   const autoExecute = options.autoExecuteTasks ?? true;
@@ -257,6 +258,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
         const trimmed = command.trim();
         let cmdToRun = trimmed;
         if (/^(npm\s+(run\s+)?(dev|start)|yarn\s+(dev|start)|pnpm\s+(dev|start))$/.test(trimmed)) {
+          const pkgCheck = await session.client.readFile('package.json');
+          if (pkgCheck.startsWith('Error:')) {
+            return {
+              ok: true,
+              output: `npm error code ENOENT\nnpm error syscall open\nnpm error path /workspace/package.json\nnpm error errno -2\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/workspace/package.json'\nnpm error enoent This is related to npm not being able to find a file.\n[exit code 1]`,
+            };
+          }
           cmdToRun = `${trimmed} > /tmp/dev-server.log 2>&1 &`;
         }
 

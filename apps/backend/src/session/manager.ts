@@ -11,7 +11,7 @@ export interface Session {
 
 export interface SessionManagerOptions {
   provider?: SandboxProvider;
-  clientFactory?: (url: string) => SandboxClient;
+  clientFactory?: (url: string, workDir?: string) => SandboxClient;
 }
 
 /**
@@ -21,11 +21,11 @@ export interface SessionManagerOptions {
 export class SessionManager {
   private readonly sessions = new Map<string, Session>();
   private readonly provider: SandboxProvider;
-  private readonly clientFactory: (url: string) => SandboxClient;
+  private readonly clientFactory: (url: string, workDir?: string) => SandboxClient;
 
   constructor(options: SessionManagerOptions = {}) {
     this.provider = options.provider ?? new LocalSandboxProvider();
-    this.clientFactory = options.clientFactory ?? ((url: string) => new SandboxClient({ baseUrl: url }));
+    this.clientFactory = options.clientFactory ?? ((url: string, workDir?: string) => new SandboxClient({ baseUrl: url, workDir }));
   }
 
   async getOrCreateSession(sessionId: string, repo?: string): Promise<Session> {
@@ -38,7 +38,7 @@ export class SessionManager {
     }
 
     const sandbox = await this.provider.createSandbox(sessionId, { repo });
-    const client = this.clientFactory(sandbox.url);
+    const client = this.clientFactory(sandbox.url, sandbox.workDir);
 
     const session: Session = {
       id: sessionId,

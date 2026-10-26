@@ -343,13 +343,19 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     if (!target.startsWith('http://') && !target.startsWith('https://')) {
       target = 'https://' + target;
     }
+    // Upgrade insecure external http to https
+    if (target.startsWith('http://') && !target.includes('localhost') && !target.includes('127.0.0.1')) {
+      target = target.replace('http://', 'https://');
+    }
 
     try {
       const fetchFn = options.fetch ?? fetch;
       const res = await fetchFn(target, {
+        redirect: 'follow',
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
       });
 
@@ -371,10 +377,32 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       const buffer = Buffer.from(await res.arrayBuffer());
       return reply.send(buffer);
     } catch (err: any) {
-      return reply.status(502).send({
-        ok: false,
-        error: `Failed to proxy external URL ${target}: ${err.message}`,
-      });
+      // Return a clean in-frame fallback page instead of raw JSON
+      const fallbackHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Proxy Notice - ${target}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #202124; color: #e8eaed; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; padding: 20px; }
+    .card { background: #292a2d; border: 1px border #3c4043; border-radius: 12px; padding: 32px; max-width: 440px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+    h2 { font-size: 18px; margin: 0 0 10px; color: #fff; }
+    p { font-size: 13px; color: #9aa0a6; line-height: 1.5; margin: 0 0 20px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; background: #8ab4f8; color: #202124; font-weight: 600; font-size: 13px; padding: 8px 18px; border-radius: 6px; text-decoration: none; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .sub { font-size: 11px; color: #5f6368; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>External Site Preview</h2>
+    <p>Target site: <strong>${target}</strong><br/>Due to browser CORS / strict origin policies, external services should be opened in a dedicated browser window.</p>
+    <a href="${target}" target="_blank" rel="noopener noreferrer" class="btn">Open ${target} in New Tab ↗</a>
+    <div class="sub">Preview Tab is optimized for your local web application on :3000</div>
+  </div>
+</body>
+</html>`;
+      return reply.type('text/html').send(fallbackHtml);
     }
   });
 

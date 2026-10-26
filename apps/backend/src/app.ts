@@ -302,10 +302,26 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
 
         reply.status(res.status);
         for (const [key, val] of res.headers.entries()) {
-          if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+          if (
+            key.toLowerCase() !== 'content-encoding' &&
+            key.toLowerCase() !== 'content-length' &&
+            key.toLowerCase() !== 'x-frame-options' &&
+            key.toLowerCase() !== 'content-security-policy'
+          ) {
             reply.header(key, val);
           }
         }
+        reply.header('x-frame-options', 'ALLOWALL');
+
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+          let html = await res.text();
+          if (!html.includes('target.js')) {
+            html = html.replace('</head>', '<script src="//localhost:4001/target.js"></script></head>');
+          }
+          return reply.send(html);
+        }
+
         const buffer = Buffer.from(await res.arrayBuffer());
         return reply.send(buffer);
       } catch (err: any) {
@@ -316,6 +332,68 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       }
     },
   );
+
+  /**
+   * Universal Web Unblocker Proxy: strips X-Frame-Options and Content-Security-Policy
+   * so external websites (like google.com or docs) can be embedded into the preview iframe.
+   */
+  app.get<{ Querystring: { url: string } }>('/api/proxy/browse', async (req, reply) => {
+    let target = req.query.url;
+    if (!target) return reply.status(400).send({ ok: false, error: 'Missing url query param' });
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+      target = 'https://' + target;
+    }
+
+    try {
+      const fetchFn = options.fetch ?? fetch;
+      const res = await fetchFn(target, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
+
+      const contentType = res.headers.get('content-type') || 'text/html';
+      reply.type(contentType);
+      reply.header('x-frame-options', 'ALLOWALL');
+
+      if (contentType.includes('text/html')) {
+        let html = await res.text();
+        const origin = new URL(target).origin;
+        if (!html.includes('<base')) {
+          html = html.replace('<head>', `<head><base href="${origin}/"><script src="//localhost:4001/target.js"></script>`);
+        } else {
+          html = html.replace('<head>', `<head><script src="//localhost:4001/target.js"></script>`);
+        }
+        return reply.send(html);
+      }
+
+      const buffer = Buffer.from(await res.arrayBuffer());
+      return reply.send(buffer);
+    } catch (err: any) {
+      return reply.status(502).send({
+        ok: false,
+        error: `Failed to proxy external URL ${target}: ${err.message}`,
+      });
+    }
+  });
+
+  /**
+   * DevTools helper: returns active Chii targets and inspect URLs
+   */
+  app.get('/api/devtools/targets', async (_req, reply) => {
+    try {
+      const fetchFn = options.fetch ?? fetch;
+      const res = await fetchFn('http://127.0.0.1:4001/targets');
+      if (!res.ok) {
+        return reply.send({ ok: false, targets: [] });
+      }
+      const data = await res.json();
+      return reply.send({ ok: true, targets: data.targets || [] });
+    } catch {
+      return reply.send({ ok: false, targets: [] });
+    }
+  });
 
   /**
    * Create new agent task

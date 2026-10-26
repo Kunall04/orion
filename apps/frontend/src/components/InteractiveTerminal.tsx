@@ -35,11 +35,14 @@ export default function InteractiveTerminal({
   const [isExecuting, setIsExecuting] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState<number>(-1);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Directly scroll the terminal container without affecting ancestor scroll offsets
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
   }, [lines, isExecuting]);
 
   // Listen to external terminal commands & clear events
@@ -82,7 +85,6 @@ export default function InteractiveTerminal({
     setHistIdx(-1);
     setInputVal('');
 
-    // Handle client-side clear
     if (trimmed === 'clear') {
       setLines([]);
       return;
@@ -176,18 +178,21 @@ export default function InteractiveTerminal({
       className="flex h-full w-full flex-col bg-[#181818] font-mono text-[12px] select-text cursor-text overflow-hidden"
       onClick={() => inputRef.current?.focus()}
     >
-      {/* Scrollable terminal text output area (matching VS Code Image 4) */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 font-mono text-[12px] leading-relaxed text-[#cccccc]">
+      {/* Scrollable terminal text output area */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4 py-2 font-mono text-[12px] leading-relaxed text-[#cccccc] no-scrollbar"
+      >
         {lines.map((l) => {
           if (l.type === 'input') {
             return (
-              <div key={l.id} className="mt-1 flex items-start gap-2 text-white">
-                <span className="flex items-center gap-1.5 select-none font-medium">
-                  <span className="text-[#38bdf8]">~/{shortRepo}</span>
+              <div key={l.id} className="mt-1 flex items-start gap-2 text-white flex-nowrap whitespace-nowrap">
+                <span className="flex items-center gap-1.5 select-none font-medium shrink-0 whitespace-nowrap">
+                  <span className="text-[#38bdf8] truncate max-w-[130px]">~/{shortRepo}</span>
                   <span className="text-[#4ade80]">main</span>
                   <span className="text-[#e2e8f0] font-bold">&gt;</span>
                 </span>
-                <span className="font-semibold text-white">{l.text}</span>
+                <span className="font-semibold text-white whitespace-pre-wrap break-all">{l.text}</span>
               </div>
             );
           }
@@ -227,9 +232,9 @@ export default function InteractiveTerminal({
         )}
 
         {/* Live input row sitting directly beneath last command */}
-        <div className="flex items-center gap-2 pt-1 font-mono text-[12px]">
-          <span className="flex items-center gap-1.5 select-none font-medium">
-            <span className="text-[#38bdf8]">~/{shortRepo}</span>
+        <div className="flex items-center gap-2 pt-1 font-mono text-[12px] flex-nowrap whitespace-nowrap">
+          <span className="flex items-center gap-1.5 select-none font-medium shrink-0 whitespace-nowrap">
+            <span className="text-[#38bdf8] truncate max-w-[130px]">~/{shortRepo}</span>
             <span className="text-[#4ade80]">main</span>
             <span className="text-[#e2e8f0] font-bold">&gt;</span>
           </span>
@@ -240,12 +245,10 @@ export default function InteractiveTerminal({
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent font-mono text-[12px] text-white outline-none caret-white"
+            className="flex-1 min-w-[60px] bg-transparent font-mono text-[12px] text-white outline-none caret-white"
             autoFocus
           />
         </div>
-
-        <div ref={scrollRef} />
       </div>
     </div>
   );

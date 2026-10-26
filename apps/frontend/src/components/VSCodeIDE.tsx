@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import InteractiveTerminal from './InteractiveTerminal';
 import {
@@ -42,13 +42,15 @@ export default function VSCodeIDE({
   files = DEFAULT_FILES,
   sessionId = 's1',
   sandboxPort,
-  onOpenTerminalTab,
   repo,
 }: VSCodeIDEProps) {
-  // All workspace files (for the Explorer tree)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(800);
+
+  // All workspace files
   const [workspaceFiles, setWorkspaceFiles] = useState<TabFile[]>(files);
 
-  // Tabs currently open in the editor (VS Code Tab bar)
+  // Open tabs in the editor
   const [openTabs, setOpenTabs] = useState<TabFile[]>(() => {
     const welcome = files.find((f) => f.isWelcome) || DEFAULT_FILES[0]!;
     const firstCodeFile = files.find((f) => !f.isWelcome);
@@ -60,19 +62,19 @@ export default function VSCodeIDE({
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [hasInitializedExpandedDirs, setHasInitializedExpandedDirs] = useState(false);
 
-  // Activity Bar & Sidebar state
+  // Activity Bar & Sidebar state (toggable anytime by clicking icon)
   const [activeActivity, setActiveActivity] = useState<ActivityTab | null>('explorer');
   const [openEditorsExpanded, setOpenEditorsExpanded] = useState(true);
   const [projectRootExpanded, setProjectRootExpanded] = useState(true);
 
-  // Search filter inside search panel
+  // Search filter
   const [searchFilter, setSearchFilter] = useState('');
 
   // Inline new file creation
   const [isCreatingFile, setIsCreatingFile] = useState(false);
   const [newFileName, setNewFileName] = useState('');
 
-  // Integrated Bottom Panel state (Terminal / Problems / Output)
+  // Integrated Bottom Panel state
   const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(true);
   const [bottomPanelTab, setBottomPanelTab] = useState<BottomPanelTab>('terminal');
   const [bottomPanelHeight, setBottomPanelHeight] = useState(190);
@@ -86,6 +88,26 @@ export default function VSCodeIDE({
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const monacoEditorRef = useRef<any>(null);
 
+  // ResizeObserver to update width and trigger Monaco layout dynamically
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const w = entry.contentRect.width;
+      setContainerWidth(w);
+      requestAnimationFrame(() => {
+        monacoEditorRef.current?.layout();
+      });
+    });
+
+    observer.observe(el);
+    setContainerWidth(el.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
   // Sync workspaceFiles when prop changes
   useEffect(() => {
     if (files && files.length > 0) {
@@ -98,15 +120,12 @@ export default function VSCodeIDE({
         setHasInitializedExpandedDirs(true);
       }
 
-      // If openTabs only had welcome and files arrived, open first meaningful file
       setOpenTabs((prev) => {
         if (prev.length === 1 && prev[0]?.isWelcome) {
           const mainFile =
             files.find((f) => f.path.includes('App') || f.path.includes('index') || f.path.includes('main')) ||
             files.find((f) => !f.isWelcome);
-          if (mainFile) {
-            return [mainFile];
-          }
+          if (mainFile) return [mainFile];
         }
         return prev;
       });
@@ -143,46 +162,38 @@ export default function VSCodeIDE({
     }
   }, [activeTab?.path, sessionId]);
 
-  // Open a file from the Explorer Tree or Search
-  const handleOpenFile = (targetFile: TabFile) => {
+  const handleOpenFile = useCallback((targetFile: TabFile) => {
     const existingIdx = openTabs.findIndex((t) => t.path === targetFile.path);
     if (existingIdx !== -1) {
       setActiveTabIdx(existingIdx);
+    } else if (openTabs.length === 1 && openTabs[0]?.isWelcome) {
+      setOpenTabs([targetFile]);
+      setActiveTabIdx(0);
     } else {
-      // If only welcome tab is open, replace it
-      if (openTabs.length === 1 && openTabs[0]?.isWelcome) {
-        setOpenTabs([targetFile]);
-        setActiveTabIdx(0);
-      } else {
-        const nextTabs = [...openTabs, targetFile];
-        setOpenTabs(nextTabs);
-        setActiveTabIdx(nextTabs.length - 1);
-      }
+      setOpenTabs((prev) => {
+        const next = [...prev, targetFile];
+        setActiveTabIdx(next.length - 1);
+        return next;
+      });
     }
-    setTimeout(() => {
-      monacoEditorRef.current?.layout();
-    }, 50);
-  };
+    setTimeout(() => monacoEditorRef.current?.layout(), 60);
+  }, [openTabs]);
 
   const handleCloseTab = (e: React.MouseEvent, idx: number) => {
     e.stopPropagation();
     if (openTabs.length <= 1) {
-      // Revert to welcome
       setOpenTabs([DEFAULT_FILES[0]!]);
       setActiveTabIdx(0);
       return;
     }
     const nextTabs = openTabs.filter((_, i) => i !== idx);
     setOpenTabs(nextTabs);
-    if (activeTabIdx >= nextTabs.length) {
-      setActiveTabIdx(Math.max(0, nextTabs.length - 1));
-    }
+    setActiveTabIdx((prev) => (prev >= nextTabs.length ? Math.max(0, nextTabs.length - 1) : prev));
   };
 
   const handleEditorChange = (value: string | undefined) => {
-    const val = value ?? '';
     setOpenTabs((prev) =>
-      prev.map((f, i) => (i === activeTabIdx ? { ...f, content: val, modified: true } : f))
+      prev.map((f, i) => (i === activeTabIdx ? { ...f, content: value ?? '', modified: true } : f))
     );
   };
 
@@ -193,10 +204,7 @@ export default function VSCodeIDE({
       const res = await fetch(`/sessions/${sessionId}/file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: activeTab.path,
-          content: activeTab.content,
-        }),
+        body: JSON.stringify({ path: activeTab.path, content: activeTab.content }),
       });
       if (res.ok) {
         setOpenTabs((prev) =>
@@ -208,7 +216,6 @@ export default function VSCodeIDE({
     }
   };
 
-  // Create new file directly in workspace
   const handleCreateNewFile = async () => {
     const clean = newFileName.trim();
     if (!clean || !sessionId) {
@@ -239,7 +246,6 @@ export default function VSCodeIDE({
     }
   };
 
-  // Keyboard shortcut listener for Save (⌘S / Ctrl+S)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -248,32 +254,21 @@ export default function VSCodeIDE({
       }
       if ((e.metaKey || e.ctrlKey) && e.key === '`') {
         e.preventDefault();
-        setIsBottomPanelOpen((prev) => !prev);
+        setIsBottomPanelOpen((p) => !p);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTab, sessionId]);
 
-  // Toggle directory expansion
   const toggleDir = (dirPath: string) => {
     setExpandedDirs((prev) => {
       const next = new Set(prev);
-      if (next.has(dirPath)) {
-        next.delete(dirPath);
-      } else {
-        next.add(dirPath);
-      }
+      next.has(dirPath) ? next.delete(dirPath) : next.add(dirPath);
       return next;
     });
   };
 
-  // Collapse all directories
-  const handleCollapseAllDirs = () => {
-    setExpandedDirs(new Set());
-  };
-
-  // Refresh workspace files
   const handleRefreshFiles = async () => {
     if (!sessionId) return;
     try {
@@ -281,22 +276,17 @@ export default function VSCodeIDE({
       if (res.ok) {
         const data = await res.json();
         if (data?.ok && Array.isArray(data.files)) {
-          const freshFiles: TabFile[] = data.files.map((p: string) => {
-            const meta = getFileMeta(p);
-            return {
-              name: p.split('/').pop() || p,
-              path: p,
-              lang: meta.lang,
-              content: '',
-            };
-          });
-          setWorkspaceFiles(freshFiles);
+          setWorkspaceFiles(
+            data.files.map((p: string) => {
+              const meta = getFileMeta(p);
+              return { name: p.split('/').pop() || p, path: p, lang: meta.lang, content: '' };
+            })
+          );
         }
       }
     } catch {}
   };
 
-  // Resizing Bottom Panel
   const startPanelResize = (e: React.PointerEvent) => {
     e.preventDefault();
     setIsResizingPanel(true);
@@ -305,30 +295,23 @@ export default function VSCodeIDE({
 
     const onPointerMove = (ev: PointerEvent) => {
       const delta = panelDragStartY.current - ev.clientY;
-      const nextH = Math.max(90, Math.min(panelStartHeight.current + delta, 480));
-      setBottomPanelHeight(nextH);
+      setBottomPanelHeight(Math.max(90, Math.min(panelStartHeight.current + delta, 480)));
       monacoEditorRef.current?.layout();
     };
-
     const onPointerUp = () => {
       setIsResizingPanel(false);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      setTimeout(() => {
-        monacoEditorRef.current?.layout();
-      }, 50);
+      setTimeout(() => monacoEditorRef.current?.layout(), 60);
     };
-
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
 
-  // Build hierarchical file tree
   const fileTree = buildFileTree(workspaceFiles);
   const displayRepoName = repo ? repo.split('/').pop() || repo : 'workspace';
 
-  // Recursive tree renderer matching VS Code skeleton
-  const renderTreeNodes = (nodes: FileTreeNode[], depth = 0) => {
+  const renderTreeNodes = (nodes: FileTreeNode[], depth = 0): React.ReactNode => {
     return nodes.map((node) => {
       const isExpanded = expandedDirs.has(node.path);
       const isSelected = !node.isDir && activeTab.path === node.path;
@@ -336,14 +319,13 @@ export default function VSCodeIDE({
 
       if (node.isDir) {
         return (
-          <div key={node.id} className="flex flex-col select-none">
+          <div key={node.id} className="flex flex-col select-none whitespace-nowrap">
             <button
               type="button"
               onClick={() => toggleDir(node.path)}
-              className="group relative flex h-[22px] w-full items-center gap-1.5 text-left text-[12px] text-[#cccccc] hover:bg-[#2a2d2e] transition-colors"
+              className="group relative flex h-[22px] w-full items-center gap-1.5 text-left text-[12px] text-[#cccccc] hover:bg-[#2a2d2e] transition-colors whitespace-nowrap overflow-hidden"
               style={{ paddingLeft: `${paddingLeft}px` }}
             >
-              {/* Indent Guide Lines for depth > 0 */}
               {depth > 0 &&
                 Array.from({ length: depth }).map((_, i) => (
                   <span
@@ -352,8 +334,6 @@ export default function VSCodeIDE({
                     style={{ left: `${i * 14 + 14}px` }}
                   />
                 ))}
-
-              {/* Chevron Arrow */}
               <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[#858585] group-hover:text-white">
                 {isExpanded ? (
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -365,9 +345,7 @@ export default function VSCodeIDE({
                   </svg>
                 )}
               </span>
-
-              {/* Folder Icon */}
-              <span className="text-[#dcb67a]">
+              <span className="text-[#dcb67a] shrink-0">
                 {isExpanded ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1h-14v9h16V9a2 2 0 0 0-2-2z" />
@@ -378,22 +356,16 @@ export default function VSCodeIDE({
                   </svg>
                 )}
               </span>
-
-              {/* Folder Name */}
               <span className="truncate font-sans font-medium text-[12px]">{node.name}</span>
             </button>
-
-            {/* Render children if directory is expanded */}
             {isExpanded && node.children.length > 0 && renderTreeNodes(node.children, depth + 1)}
           </div>
         );
       }
 
-      // File Node
       const meta = getFileMeta(node.name);
       return (
-        <div key={node.id} className="relative flex select-none">
-          {/* Indent Guide Lines for depth > 0 */}
+        <div key={node.id} className="relative flex select-none whitespace-nowrap overflow-hidden">
           {depth > 0 &&
             Array.from({ length: depth }).map((_, i) => (
               <span
@@ -402,26 +374,17 @@ export default function VSCodeIDE({
                 style={{ left: `${i * 14 + 14}px` }}
               />
             ))}
-
           <button
             type="button"
             onClick={() => node.file && handleOpenFile(node.file)}
-            className={`group flex h-[22px] w-full items-center gap-1.5 text-left text-[12px] transition-colors ${
-              isSelected
-                ? 'bg-[#37373d] text-white font-medium'
-                : 'text-[#969696] hover:bg-[#2a2d2e] hover:text-[#cccccc]'
+            className={`group flex h-[22px] w-full items-center gap-1.5 text-left text-[12px] transition-colors whitespace-nowrap overflow-hidden ${
+              isSelected ? 'bg-[#37373d] text-white font-medium' : 'text-[#969696] hover:bg-[#2a2d2e] hover:text-[#cccccc]'
             }`}
             style={{ paddingLeft: `${paddingLeft + 16}px` }}
           >
-            {/* File Icon Badge */}
-            <span
-              className="flex h-3.5 w-4 shrink-0 items-center justify-center font-mono text-[9.5px] font-bold"
-              style={{ color: meta.color }}
-            >
+            <span className="flex h-3.5 w-4 shrink-0 items-center justify-center font-mono text-[9.5px] font-bold" style={{ color: meta.color }}>
               {meta.badge}
             </span>
-
-            {/* File Name */}
             <span className="truncate font-sans text-[12px]">{node.name}</span>
           </button>
         </div>
@@ -429,18 +392,19 @@ export default function VSCodeIDE({
     });
   };
 
-  // Breadcrumbs segments
   const breadcrumbSegments = activeTab.isWelcome
     ? ['welcome']
     : [displayRepoName, ...activeTab.path.split('/').filter(Boolean)];
 
   return (
-    <div className="flex h-full w-full select-none overflow-hidden bg-[#1e1e1e] font-sans text-white">
-      {/* ── 1. VS Code Left Activity Bar (48px) ── */}
+    <div
+      ref={containerRef}
+      className="flex h-full w-full select-none overflow-hidden bg-[#1e1e1e] font-sans text-white"
+    >
+      {/* ── 1. Activity Bar (48px) ── */}
       <aside className="flex w-[48px] shrink-0 flex-col items-center justify-between border-r border-[#252526] bg-[#333333] py-2 text-[#858585]">
-        {/* Top Activity Icons */}
         <div className="flex flex-col items-center gap-2">
-          {/* Explorer Icon */}
+          {/* Explorer */}
           <button
             type="button"
             title="Explorer (⌘⇧E)"
@@ -458,7 +422,7 @@ export default function VSCodeIDE({
             </svg>
           </button>
 
-          {/* Search Icon */}
+          {/* Search */}
           <button
             type="button"
             title="Search (⌘⇧F)"
@@ -476,7 +440,7 @@ export default function VSCodeIDE({
             </svg>
           </button>
 
-          {/* Source Control / Git Icon */}
+          {/* Source Control */}
           <button
             type="button"
             title="Source Control (⌃⇧G)"
@@ -500,7 +464,7 @@ export default function VSCodeIDE({
           </button>
         </div>
 
-        {/* Bottom Activity Icons */}
+        {/* Settings gear */}
         <div className="flex flex-col items-center gap-3">
           <button
             type="button"
@@ -509,23 +473,21 @@ export default function VSCodeIDE({
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83 0 2 2 0 0 1 0 2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83 0 2 2 0 0 1 0 2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </button>
         </div>
       </aside>
 
-      {/* ── 2. VS Code Primary Side Bar (Explorer / Search / Git) ── */}
+      {/* ── 2. Primary Side Bar (200px compact width) ── */}
       {activeActivity !== null && (
-        <div className="flex w-[230px] shrink-0 flex-col border-r border-[#252526] bg-[#252526] text-[12px] font-sans">
-          {/* ── 2A. Explorer View ── */}
+        <div className="flex w-[200px] shrink-0 flex-col border-r border-[#252526] bg-[#252526] text-[12px] font-sans overflow-hidden">
+          {/* Explorer View */}
           {activeActivity === 'explorer' && (
             <div className="flex h-full flex-col overflow-hidden">
-              {/* Explorer Header */}
               <div className="flex h-[35px] shrink-0 items-center justify-between px-3 uppercase tracking-wider text-[#bbbbbb]">
-                <span className="text-[11px] font-bold text-[#bbbbbb]">Explorer</span>
+                <span className="text-[11px] font-bold">Explorer</span>
                 <div className="flex items-center gap-1 text-[#858585]">
-                  {/* New File Button */}
                   <button
                     type="button"
                     title="New File..."
@@ -539,11 +501,9 @@ export default function VSCodeIDE({
                       <line x1="9" y1="15" x2="15" y2="15" />
                     </svg>
                   </button>
-
-                  {/* Refresh Button */}
                   <button
                     type="button"
-                    title="Refresh Explorer"
+                    title="Refresh"
                     onClick={handleRefreshFiles}
                     className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#333333] hover:text-white transition-colors"
                   >
@@ -552,12 +512,10 @@ export default function VSCodeIDE({
                       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                     </svg>
                   </button>
-
-                  {/* Collapse All Folders Button */}
                   <button
                     type="button"
-                    title="Collapse Folders in Explorer"
-                    onClick={handleCollapseAllDirs}
+                    title="Collapse Folders"
+                    onClick={() => setExpandedDirs(new Set())}
                     className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#333333] hover:text-white transition-colors"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -569,24 +527,20 @@ export default function VSCodeIDE({
                 </div>
               </div>
 
-              {/* Scrollable Explorer Contents */}
-              <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
-                {/* Accordion 1: OPEN EDITORS */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 no-scrollbar">
+                {/* OPEN EDITORS */}
                 <div className="flex flex-col border-t border-[#1e1e1e]">
                   <button
                     type="button"
-                    onClick={() => setOpenEditorsExpanded((prev) => !prev)}
+                    onClick={() => setOpenEditorsExpanded((p) => !p)}
                     className="flex h-[24px] items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#bbbbbb] hover:text-white transition-colors"
                   >
-                    <span className="text-[#858585]">
-                      {openEditorsExpanded ? '▾' : '▸'}
-                    </span>
+                    <span className="text-[#858585]">{openEditorsExpanded ? '▾' : '▸'}</span>
                     <span>Open Editors</span>
                     <span className="ml-auto text-[10px] text-[#666666]">
                       {openTabs.filter((t) => !t.isWelcome).length}
                     </span>
                   </button>
-
                   {openEditorsExpanded && (
                     <div className="flex flex-col py-0.5">
                       {openTabs.map((tab, idx) => {
@@ -611,10 +565,8 @@ export default function VSCodeIDE({
                               </span>
                               <span className="truncate">{tab.name}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              {tab.modified && (
-                                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                              )}
+                            <div className="flex shrink-0 items-center gap-1">
+                              {tab.modified && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
                               <button
                                 type="button"
                                 onClick={(e) => handleCloseTab(e, idx)}
@@ -631,22 +583,18 @@ export default function VSCodeIDE({
                   )}
                 </div>
 
-                {/* Accordion 2: PROJECT ROOT TREE */}
+                {/* PROJECT ROOT TREE */}
                 <div className="flex flex-col border-t border-[#1e1e1e] mt-1">
                   <button
                     type="button"
-                    onClick={() => setProjectRootExpanded((prev) => !prev)}
+                    onClick={() => setProjectRootExpanded((p) => !p)}
                     className="flex h-[24px] items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#bbbbbb] hover:text-white transition-colors"
                   >
-                    <span className="text-[#858585]">
-                      {projectRootExpanded ? '▾' : '▸'}
-                    </span>
-                    <span className="truncate">{displayRepoName}</span>
+                    <span className="text-[#858585]">{projectRootExpanded ? '▾' : '▸'}</span>
+                    <span className="truncate">{displayRepoName.toUpperCase()}</span>
                   </button>
-
                   {projectRootExpanded && (
                     <div className="flex flex-col pt-0.5">
-                      {/* Inline New File Creator */}
                       {isCreatingFile && (
                         <div className="flex items-center gap-1.5 px-4 py-1 bg-[#1e1e1e]">
                           <span className="text-[10px] text-[#858585]">📄</span>
@@ -657,22 +605,21 @@ export default function VSCodeIDE({
                             onChange={(e) => setNewFileName(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleCreateNewFile();
-                              if (e.key === 'Escape') setIsCreatingFile(false);
+                              if (e.key === 'Escape') {
+                                setIsCreatingFile(false);
+                                setNewFileName('');
+                              }
                             }}
                             onBlur={handleCreateNewFile}
-                            placeholder="file.ts or dir/file.ts"
-                            className="w-full bg-[#3c3c3c] px-1.5 py-0.5 text-[11px] text-white outline-none rounded-none border border-accent"
+                            placeholder="file.ts"
+                            className="w-full bg-[#3c3c3c] px-1.5 py-0.5 text-[11px] text-white outline-none border border-accent"
                           />
                         </div>
                       )}
-
-                      {/* Hierarchical Folder & File Tree */}
                       {fileTree.length > 0 ? (
                         renderTreeNodes(fileTree, 0)
                       ) : (
-                        <div className="p-3 text-[#777777] text-[11px]">
-                          No workspace files loaded.
-                        </div>
+                        <div className="p-3 text-[#777777] text-[11px]">No workspace files loaded.</div>
                       )}
                     </div>
                   )}
@@ -681,9 +628,9 @@ export default function VSCodeIDE({
             </div>
           )}
 
-          {/* ── 2B. Search View ── */}
+          {/* Search View */}
           {activeActivity === 'search' && (
-            <div className="flex h-full flex-col p-3 gap-2">
+            <div className="flex h-full flex-col p-3 gap-2 overflow-hidden">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#bbbbbb]">Search</span>
               <input
                 type="text"
@@ -692,7 +639,7 @@ export default function VSCodeIDE({
                 placeholder="Search files by name..."
                 className="w-full rounded bg-[#3c3c3c] px-2.5 py-1 text-[11.5px] text-white outline-none border border-transparent focus:border-accent"
               />
-              <div className="flex flex-col gap-0.5 mt-2 overflow-y-auto">
+              <div className="flex flex-col gap-0.5 mt-2 overflow-y-auto no-scrollbar">
                 {workspaceFiles
                   .filter((f) => !f.isWelcome && f.path.toLowerCase().includes(searchFilter.toLowerCase()))
                   .map((f) => {
@@ -704,7 +651,7 @@ export default function VSCodeIDE({
                         onClick={() => handleOpenFile(f)}
                         className="flex items-center gap-2 rounded px-2 py-1 text-left text-[#cccccc] hover:bg-[#2a2d2e] transition-colors"
                       >
-                        <span className="font-mono text-[9px] font-bold" style={{ color: meta.color }}>
+                        <span className="font-mono text-[9px] font-bold shrink-0" style={{ color: meta.color }}>
                           {meta.badge}
                         </span>
                         <div className="flex min-w-0 flex-1 flex-col">
@@ -718,32 +665,34 @@ export default function VSCodeIDE({
             </div>
           )}
 
-          {/* ── 2C. Source Control (Git) View ── */}
+          {/* Git View */}
           {activeActivity === 'git' && (
-            <div className="flex h-full flex-col p-3 gap-3">
+            <div className="flex h-full flex-col p-3 gap-3 overflow-hidden">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#bbbbbb]">Source Control</span>
                 <span className="rounded bg-[#333333] px-1.5 py-0.2 font-mono text-[10px] text-white">
                   {openTabs.filter((t) => t.modified).length}
                 </span>
               </div>
-              <div className="flex flex-col gap-1 overflow-y-auto">
+              <div className="flex flex-col gap-1 overflow-y-auto no-scrollbar">
                 <span className="text-[10.5px] font-semibold text-[#858585] uppercase">Changes</span>
-                {openTabs.filter((t) => t.modified).map((t) => (
-                  <div
-                    key={t.path}
-                    onClick={() => {
-                      const idx = openTabs.findIndex((f) => f.path === t.path);
-                      if (idx !== -1) setActiveTabIdx(idx);
-                    }}
-                    className="flex items-center justify-between rounded px-2 py-1 text-[12px] text-accent hover:bg-[#2a2d2e] cursor-pointer"
-                  >
-                    <span className="truncate">{t.name}</span>
-                    <span className="text-[10px] text-accent font-bold">M</span>
-                  </div>
-                ))}
+                {openTabs
+                  .filter((t) => t.modified)
+                  .map((t) => (
+                    <div
+                      key={t.path}
+                      onClick={() => {
+                        const idx = openTabs.findIndex((f) => f.path === t.path);
+                        if (idx !== -1) setActiveTabIdx(idx);
+                      }}
+                      className="flex items-center justify-between rounded px-2 py-1 text-[12px] text-accent hover:bg-[#2a2d2e] cursor-pointer"
+                    >
+                      <span className="truncate">{t.name}</span>
+                      <span className="text-[10px] text-accent font-bold shrink-0 ml-1">M</span>
+                    </div>
+                  ))}
                 {!openTabs.some((t) => t.modified) && (
-                  <div className="py-2 text-[11px] text-[#666666]">No uncommitted changes in open tabs.</div>
+                  <div className="py-2 text-[11px] text-[#666666]">No changes in open tabs.</div>
                 )}
               </div>
             </div>
@@ -751,12 +700,11 @@ export default function VSCodeIDE({
         </div>
       )}
 
-      {/* ── 3. Main Editor Column (Tabs, Breadcrumbs, Monaco, Resizable Bottom Panel) ── */}
+      {/* ── 3. Main Editor Column ── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* ── 3A. VS Code Tab Bar ── */}
-        <div className="flex h-[35px] shrink-0 items-center justify-between bg-[#252526] border-b border-[#181818]">
-          {/* Scrollable Tabs */}
-          <div className="flex h-full items-center overflow-x-auto no-scrollbar">
+        {/* ── 3A. Tab Bar ── */}
+        <div className="flex h-[35px] shrink-0 items-center justify-between bg-[#252526] border-b border-[#181818] overflow-hidden whitespace-nowrap">
+          <div className="flex h-full min-w-0 flex-1 items-center overflow-x-auto no-scrollbar whitespace-nowrap">
             {openTabs.map((file, idx) => {
               const isActive = idx === activeTabIdx;
               const meta = getFileMeta(file.name);
@@ -765,20 +713,20 @@ export default function VSCodeIDE({
                   key={file.path}
                   type="button"
                   onClick={() => setActiveTabIdx(idx)}
-                  className={`group flex h-full items-center gap-2 border-r border-[#181818] px-3 font-sans text-[12px] transition-colors ${
+                  className={`group flex h-full shrink-0 items-center gap-1.5 border-r border-[#181818] px-3 font-sans text-[12px] whitespace-nowrap transition-colors ${
                     isActive
                       ? 'bg-[#1e1e1e] text-white border-t-2 border-t-accent'
                       : 'bg-[#2d2d2d] text-[#969696] hover:bg-[#1e1e1e]/60 hover:text-[#cccccc]'
                   }`}
                 >
-                  <span className="font-mono text-[10px] font-bold" style={{ color: meta.color }}>
+                  <span className="font-mono text-[9.5px] font-bold shrink-0" style={{ color: meta.color }}>
                     {meta.badge}
                   </span>
-                  <span className="truncate max-w-[130px]">{file.name}</span>
-                  {file.modified && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                  <span className="truncate max-w-[120px]">{file.name}</span>
+                  {file.modified && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
                   <span
                     onClick={(e) => handleCloseTab(e, idx)}
-                    className="ml-1 rounded p-0.5 text-[#858585] opacity-0 group-hover:opacity-100 hover:text-white"
+                    className="ml-1 rounded p-0.5 text-[#858585] opacity-0 group-hover:opacity-100 hover:text-white shrink-0"
                   >
                     ✕
                   </span>
@@ -787,25 +735,22 @@ export default function VSCodeIDE({
             })}
           </div>
 
-          {/* Action buttons on tab bar (Save, Split, Toggle Terminal) */}
-          <div className="flex items-center gap-1.5 px-2 text-[#858585]">
+          <div className="flex shrink-0 items-center gap-1.5 px-2 text-[#858585] whitespace-nowrap">
             {activeTab.modified && (
               <button
                 type="button"
                 onClick={handleSaveFile}
                 disabled={isSaving}
-                className="rounded bg-accent/20 px-2 py-0.5 font-mono text-[10.5px] text-accent hover:bg-accent/30 transition-colors"
+                className="rounded bg-accent/20 px-2 py-0.5 font-mono text-[10px] text-accent hover:bg-accent/30 transition-colors whitespace-nowrap"
               >
-                {isSaving ? 'Saving...' : 'Save (⌘S)'}
+                {isSaving ? 'Saving…' : '⌘S Save'}
               </button>
             )}
-
-            {/* Toggle Terminal Bottom Panel */}
             <button
               type="button"
-              title="Toggle Integrated Terminal (⌃`)"
-              onClick={() => setIsBottomPanelOpen((prev) => !prev)}
-              className={`flex h-6 w-6 items-center justify-center rounded hover:bg-[#333333] transition-colors ${
+              title="Toggle Terminal (⌃`)"
+              onClick={() => setIsBottomPanelOpen((p) => !p)}
+              className={`flex h-6 w-6 items-center justify-center rounded hover:bg-[#333333] transition-colors shrink-0 ${
                 isBottomPanelOpen ? 'text-white' : 'text-[#858585]'
               }`}
             >
@@ -818,15 +763,13 @@ export default function VSCodeIDE({
         </div>
 
         {/* ── 3B. Breadcrumbs Bar ── */}
-        <div className="flex h-[22px] shrink-0 items-center gap-1.5 border-b border-[#252526] bg-[#1e1e1e] px-4 font-sans text-[11px] text-[#888888] overflow-x-auto no-scrollbar">
+        <div className="flex h-[22px] shrink-0 items-center gap-1 border-b border-[#252526] bg-[#1e1e1e] px-3 font-sans text-[11px] text-[#888888] overflow-hidden whitespace-nowrap">
           {breadcrumbSegments.map((segment, i) => {
             const isLast = i === breadcrumbSegments.length - 1;
             return (
-              <div key={i} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-[#555555]">&gt;</span>}
-                <span className={isLast ? 'font-medium text-[#cccccc]' : 'hover:text-[#aaaaaa]'}>
-                  {segment}
-                </span>
+              <div key={i} className="flex items-center gap-1 min-w-0 shrink whitespace-nowrap">
+                {i > 0 && <span className="text-[#555555] shrink-0">&gt;</span>}
+                <span className={`truncate ${isLast ? 'font-medium text-[#cccccc]' : ''}`}>{segment}</span>
               </div>
             );
           })}
@@ -837,7 +780,7 @@ export default function VSCodeIDE({
           {isLoadingFile ? (
             <div className="flex h-full items-center justify-center text-[#888888] font-mono text-xs gap-2">
               <span className="h-3 w-3 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-              Loading file from sandbox workspace...
+              Loading file…
             </div>
           ) : activeTab.isWelcome ? (
             <div className="flex h-full flex-col items-center justify-center p-8 text-center text-[#cccccc]">
@@ -846,9 +789,10 @@ export default function VSCodeIDE({
               </div>
               <h2 className="text-lg font-semibold text-white">Orion Sandbox IDE</h2>
               <p className="mt-1 max-w-md text-xs text-[#888888] leading-relaxed">
-                Explore files from the hierarchical Explorer on the left, edit code with full syntax highlighting, or run commands in the integrated Terminal panel below.
+                Explore files from the Explorer on the left, edit code with full syntax highlighting, or run commands in
+                the integrated Terminal panel below.
               </p>
-              <div className="mt-5 flex items-center gap-3">
+              <div className="mt-5 flex items-center gap-3 flex-wrap justify-center">
                 <button
                   type="button"
                   onClick={() => setActiveActivity('explorer')}
@@ -886,10 +830,13 @@ export default function VSCodeIDE({
                 fontSize: 12.5,
                 fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
                 tabSize: 2,
-                minimap: { enabled: true, maxColumn: 60 },
+                minimap: { enabled: containerWidth > 720, maxColumn: 40 },
                 scrollBeyondLastLine: false,
-                wordWrap: 'on',
+                wordWrap: 'off',
                 lineNumbers: 'on',
+                lineNumbersMinChars: 3,
+                lineDecorationsWidth: 4,
+                glyphMargin: false,
                 renderLineHighlight: 'all',
                 automaticLayout: true,
                 padding: { top: 8, bottom: 8 },
@@ -898,93 +845,50 @@ export default function VSCodeIDE({
           )}
         </div>
 
-        {/* ── 3D. Integrated Resizable Bottom Panel (Terminal / Problems / Output) ── */}
+        {/* ── 3D. Integrated Resizable Bottom Panel ── */}
         {isBottomPanelOpen && (
           <div
             style={{ height: bottomPanelHeight }}
-            className="relative flex flex-col shrink-0 border-t border-[#333333] bg-[#1e1e1e]"
+            className="relative flex flex-col shrink-0 border-t border-[#333333] bg-[#181818] overflow-hidden"
           >
-            {/* Draggable Resize Handle */}
+            {/* Drag-to-resize handle */}
             <div
               onPointerDown={startPanelResize}
-              title="Drag to resize panel"
               className={`absolute -top-1 left-0 right-0 z-10 h-2 cursor-row-resize select-none ${
                 isResizingPanel ? 'bg-accent/30' : 'hover:bg-accent/20'
               }`}
             />
 
-            {/* Panel Tab Bar (Matching VS Code Image 4) */}
-            <div className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#252526] bg-[#181818] px-3">
-              {/* Left Panel Tabs */}
-              <div className="flex h-full items-center gap-4 text-[11.5px] font-sans">
-                <button
-                  type="button"
-                  onClick={() => setBottomPanelTab('problems')}
-                  className={`flex h-full items-center gap-1.5 transition-colors ${
-                    bottomPanelTab === 'problems'
-                      ? 'border-b-2 border-white text-white font-medium'
-                      : 'text-[#858585] hover:text-[#cccccc]'
-                  }`}
-                >
-                  <span>Problems</span>
-                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#007acc] text-[9px] font-bold text-white">
-                    0
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBottomPanelTab('output')}
-                  className={`flex h-full items-center transition-colors ${
-                    bottomPanelTab === 'output'
-                      ? 'border-b-2 border-white text-white font-medium'
-                      : 'text-[#858585] hover:text-[#cccccc]'
-                  }`}
-                >
-                  Output
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBottomPanelTab('debug')}
-                  className={`flex h-full items-center transition-colors ${
-                    bottomPanelTab === 'debug'
-                      ? 'border-b-2 border-white text-white font-medium'
-                      : 'text-[#858585] hover:text-[#cccccc]'
-                  }`}
-                >
-                  Debug Console
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBottomPanelTab('terminal')}
-                  className={`flex h-full items-center gap-1.5 transition-colors ${
-                    bottomPanelTab === 'terminal'
-                      ? 'border-b-2 border-white text-white font-medium'
-                      : 'text-[#858585] hover:text-[#cccccc]'
-                  }`}
-                >
-                  <span>Terminal</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBottomPanelTab('ports')}
-                  className={`flex h-full items-center transition-colors ${
-                    bottomPanelTab === 'ports'
-                      ? 'border-b-2 border-white text-white font-medium'
-                      : 'text-[#858585] hover:text-[#cccccc]'
-                  }`}
-                >
-                  Ports
-                </button>
+            {/* Panel Tab Bar */}
+            <div className="flex h-[32px] shrink-0 items-center justify-between border-b border-[#252526] bg-[#181818] px-3 overflow-hidden whitespace-nowrap">
+              <div className="flex h-full min-w-0 items-center gap-3 text-[11.5px] font-sans overflow-x-auto no-scrollbar whitespace-nowrap">
+                {(['problems', 'output', 'debug', 'terminal', 'ports'] as BottomPanelTab[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setBottomPanelTab(t)}
+                    className={`flex h-full shrink-0 items-center gap-1.5 capitalize transition-colors whitespace-nowrap ${
+                      bottomPanelTab === t
+                        ? 'border-b-2 border-white text-white font-medium'
+                        : 'text-[#858585] hover:text-[#cccccc]'
+                    }`}
+                  >
+                    {t === 'problems' ? (
+                      <>
+                        <span>Problems</span>
+                        <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#007acc] text-[9px] font-bold text-white">
+                          0
+                        </span>
+                      </>
+                    ) : (
+                      <span>{t.charAt(0).toUpperCase() + t.slice(1).replace(/([A-Z])/g, ' $1')}</span>
+                    )}
+                  </button>
+                ))}
               </div>
 
-              {/* Right Panel Controls (Image 4) */}
-              <div className="flex items-center gap-1 text-[#858585]">
-                {/* zsh pill dropdown */}
-                <div className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-mono text-[#cccccc] hover:bg-[#2a2d2e] cursor-pointer">
+              <div className="flex shrink-0 items-center gap-1 text-[#858585] whitespace-nowrap">
+                <div className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-mono text-[#cccccc] hover:bg-[#2a2d2e] cursor-pointer shrink-0">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="4 17 10 11 4 5" />
                     <line x1="12" y1="19" x2="20" y2="19" />
@@ -995,40 +899,11 @@ export default function VSCodeIDE({
                   </svg>
                 </div>
 
-                {/* + New terminal button */}
                 <button
                   type="button"
-                  title="New Terminal"
-                  onClick={() => window.dispatchEvent(new CustomEvent('orion:terminal-command', { detail: { command: 'clear', output: '' } }))}
-                  className="flex items-center gap-0.5 rounded px-1.5 py-0.5 hover:bg-[#2a2d2e] hover:text-white transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-
-                {/* Split Terminal button */}
-                <button
-                  type="button"
-                  title="Split Terminal"
-                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <line x1="12" y1="3" x2="12" y2="21" />
-                  </svg>
-                </button>
-
-                {/* Trash Can button (Kill / Clear Terminal) */}
-                <button
-                  type="button"
-                  title="Kill / Clear Terminal"
+                  title="Clear Terminal"
                   onClick={() => window.dispatchEvent(new CustomEvent('orion:terminal-clear'))}
-                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="3 6 5 6 21 6" />
@@ -1036,25 +911,11 @@ export default function VSCodeIDE({
                   </svg>
                 </button>
 
-                {/* More actions ... */}
                 <button
                   type="button"
-                  title="More Actions..."
-                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="5" cy="12" r="1.5" />
-                    <circle cx="12" cy="12" r="1.5" />
-                    <circle cx="19" cy="12" r="1.5" />
-                  </svg>
-                </button>
-
-                {/* Maximize / Restore Panel Height */}
-                <button
-                  type="button"
-                  title={bottomPanelHeight > 280 ? 'Restore Panel Size' : 'Maximize Panel Size'}
-                  onClick={() => setBottomPanelHeight((prev) => (prev > 280 ? 190 : 380))}
-                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                  title={bottomPanelHeight > 280 ? 'Restore' : 'Maximize'}
+                  onClick={() => setBottomPanelHeight((p) => (p > 280 ? 190 : 380))}
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     {bottomPanelHeight > 280 ? (
@@ -1065,12 +926,11 @@ export default function VSCodeIDE({
                   </svg>
                 </button>
 
-                {/* Close Panel Button */}
                 <button
                   type="button"
                   title="Close Panel"
                   onClick={() => setIsBottomPanelOpen(false)}
-                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors"
+                  className="rounded p-1 hover:bg-[#2a2d2e] hover:text-white transition-colors shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -1080,7 +940,7 @@ export default function VSCodeIDE({
               </div>
             </div>
 
-            {/* Panel Tab Content */}
+            {/* Panel Content */}
             <div className="min-h-0 flex-1 overflow-hidden bg-[#181818]">
               {bottomPanelTab === 'terminal' && (
                 <div className="h-full overflow-hidden">
@@ -1089,70 +949,60 @@ export default function VSCodeIDE({
               )}
               {bottomPanelTab === 'problems' && (
                 <div className="flex h-full items-center justify-center text-[#858585] text-[12px]">
-                  No problems have been detected in the workspace.
+                  No problems detected.
                 </div>
               )}
               {bottomPanelTab === 'output' && (
                 <div className="p-3 font-mono text-[11px] text-[#858585]">
-                  [Orion] Workspace sandbox connected (session: {sessionId}). Ready.
+                  [Orion] Sandbox connected (session: {sessionId}). Ready.
                 </div>
               )}
               {bottomPanelTab === 'debug' && (
                 <div className="flex h-full items-center justify-center text-[#858585] text-[12px]">
-                  Debug console ready. Attach debugger to inspect.
+                  Debug console ready.
                 </div>
               )}
               {bottomPanelTab === 'ports' && (
-                <div className="p-3 text-[12px] text-[#cccccc]">
-                  <div className="font-mono text-[11px] text-[#858585]">Forwarded Ports:</div>
-                  <div className="mt-1 font-mono text-[11px] text-green">
-                    ● Port 5001: Sandbox Runner (Active)
-                  </div>
-                  {sandboxPort && (
-                    <div className="mt-1 font-mono text-[11px] text-green">
-                      ● Port {sandboxPort}: Application Preview
-                    </div>
-                  )}
+                <div className="p-3 font-mono text-[11px] text-[#cccccc]">
+                  <div className="text-[#858585]">Forwarded Ports:</div>
+                  <div className="mt-1 text-green">● Port 5001: Sandbox Runner (Active)</div>
+                  {sandboxPort && <div className="mt-1 text-green">● Port {sandboxPort}: Application Preview</div>}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ── 3E. VS Code Bottom Status Bar (Height: 22px, Blue #007acc) ── */}
-        <div className="flex h-[22px] shrink-0 items-center justify-between bg-[#007acc] px-2 font-mono text-[11px] text-white">
-          {/* Left Status Bar Items */}
-          <div className="flex items-center gap-3">
+        {/* ── 3E. Status Bar (22px, VS Code blue, guaranteed no wrapping) ── */}
+        <div className="flex h-[22px] shrink-0 items-center justify-between overflow-hidden bg-[#007acc] px-2 font-mono text-[10.5px] text-white whitespace-nowrap">
+          {/* Left section */}
+          <div className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap">
             <button
               type="button"
-              onClick={() => setActiveActivity((prev) => (prev === 'git' ? null : 'git'))}
-              className="flex items-center gap-1 hover:bg-white/15 px-1 rounded transition-colors"
+              onClick={() => setActiveActivity((p) => (p === 'git' ? null : 'git'))}
+              className="flex items-center gap-1 hover:bg-white/15 px-1 rounded transition-colors whitespace-nowrap shrink truncate max-w-[120px]"
             >
-              <span>⎇</span>
-              <span>{displayRepoName}</span>
+              <span className="shrink-0">⎇</span>
+              <span className="truncate">{displayRepoName}</span>
             </button>
-            <div className="flex items-center gap-1">
-              <span>✓</span>
-              <span>0 errors</span>
-            </div>
+            <span className="whitespace-nowrap shrink-0">✓ 0 errors</span>
             <button
               type="button"
-              onClick={() => setIsBottomPanelOpen((prev) => !prev)}
-              className="flex items-center gap-1 hover:bg-white/15 px-1 rounded transition-colors"
+              onClick={() => setIsBottomPanelOpen((p) => !p)}
+              className="flex items-center gap-1 hover:bg-white/15 px-1 rounded transition-colors whitespace-nowrap shrink-0"
             >
-              <span>▲ Terminal</span>
+              ▲ Terminal
             </button>
           </div>
 
-          {/* Right Status Bar Items (Cursor Ln/Col, Encoding, Lang) */}
-          <div className="flex items-center gap-3">
-            <span>
+          {/* Right section */}
+          <div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
+            <span className="whitespace-nowrap shrink-0">
               Ln {cursorPos.line}, Col {cursorPos.col}
             </span>
-            <span>Spaces: 2</span>
-            <span>UTF-8</span>
-            <span>LF</span>
-            <span className="font-semibold uppercase">{activeTab.lang}</span>
+            <span className="whitespace-nowrap shrink-0 hidden sm:inline">Spaces: 2</span>
+            <span className="whitespace-nowrap shrink-0 hidden md:inline">UTF-8</span>
+            <span className="whitespace-nowrap shrink-0 font-semibold uppercase">{activeTab.lang}</span>
           </div>
         </div>
       </div>

@@ -153,9 +153,9 @@ function PRView({
 }
 
 export default function RightPanel({
-  initialWidth = 460,
-  minWidth = 300,
-  maxWidth = 860,
+  initialWidth = 560,
+  minWidth = 420,
+  maxWidth = 960,
   diffs,
   files,
   activeTab,
@@ -234,8 +234,8 @@ export default function RightPanel({
   };
 
   const handleDoubleClick = () => {
-    // Toggle between default compact (400px) and wide view (660px)
-    setWidth((prev) => (prev > 520 ? 400 : 660));
+    // Toggle between default compact (460px) and wide view (720px)
+    setWidth((prev) => (prev > 560 ? 460 : 720));
   };
 
   const visibleTabs = TABS;

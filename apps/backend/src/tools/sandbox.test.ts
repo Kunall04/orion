@@ -57,6 +57,29 @@ describe('Sandbox Tools', () => {
       expect(out).toBe('command output');
     });
 
+    it('backgrounds dev server commands and reads the output log', async () => {
+      const registry = new ToolRegistry();
+      const mockClient = createMockClient();
+      (mockClient.runCommand as any)
+        .mockResolvedValueOnce('') // background start
+        .mockResolvedValueOnce('VITE v5.4.14 ready in 250 ms\n➜ Local: http://localhost:3000/'); // cat log
+
+      registerSandboxTools(registry, mockClient);
+
+      const out = await registry.execute(
+        'run_command',
+        { command: 'npm run dev' },
+        dummyCtx,
+      );
+
+      expect(mockClient.runCommand).toHaveBeenNthCalledWith(
+        1,
+        'npm run dev > /tmp/dev-server.log 2>&1 &',
+      );
+      expect(mockClient.runCommand).toHaveBeenNthCalledWith(2, 'cat /tmp/dev-server.log');
+      expect(out).toContain('http://localhost:3000/');
+    });
+
     it('rejects missing command parameter', async () => {
       const registry = new ToolRegistry();
       const mockClient = createMockClient();

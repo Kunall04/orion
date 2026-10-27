@@ -49,8 +49,26 @@ export function createSandboxTools(client: SandboxClient): Record<SandboxToolNam
         },
       },
       async execute(args) {
-        const command = args.command as string;
+        const command = (args.command as string || '').trim();
         const timeoutMs = args.timeoutMs as number | undefined;
+
+        // Dev servers are long-running foreground processes that would otherwise block
+        // until timeoutMs (30s) and then get killed. We background them and capture early output.
+        const isDevServer =
+          /^(npm\s+(run\s+)?(dev|start)|yarn\s+(run\s+)?(dev|start)|pnpm\s+(run\s+)?(dev|start)|npx\s+vite|vite)(\s+.*)?$/.test(
+            command,
+          ) && !command.includes('&');
+
+        if (isDevServer) {
+          await client.runCommand(`${command} > /tmp/dev-server.log 2>&1 &`);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const logOutput = await client.runCommand('cat /tmp/dev-server.log');
+          if (logOutput && !logOutput.includes('No such file or directory')) {
+            return logOutput;
+          }
+          return `[Started dev server in background: ${command}]`;
+        }
+
         return client.runCommand(command, timeoutMs);
       },
     },

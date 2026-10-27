@@ -276,6 +276,34 @@ describe('backend', () => {
       expect(data.sandbox.port).toBeDefined();
     });
 
+    it('auto-detects active development server port when requested port is not running', async () => {
+      const mockFetch: typeof fetch = async (input) => {
+        const url = String(input);
+        if (url.includes(':5177/')) {
+          return new Response(null, { status: 200 });
+        }
+        throw new Error('Connection refused');
+      };
+
+      const app = buildApp({ autoExecuteTasks: false, fetch: mockFetch });
+      await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: { id: 'preview-session-autoport' },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/preview/preview-session-autoport/status?port=3000',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json();
+      expect(data.ok).toBe(true);
+      expect(data.port).toBe(5177);
+      expect(data.running).toBe(true);
+    });
+
     it('proxies preview requests to the sandbox application port', async () => {
       let capturedUrl = '';
       const mockFetch: typeof fetch = async (input, init) => {

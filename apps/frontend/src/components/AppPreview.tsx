@@ -58,6 +58,7 @@ export default function AppPreview({
   const [isRecording, setIsRecording] = useState<boolean>(true);
   const [serverRunning, setServerRunning] = useState<boolean>(false);
   const [checkingStatus, setCheckingStatus] = useState<boolean>(true);
+  const [activePort, setActivePort] = useState<number>(3000);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Poll backend preview status for localhost dev server reachability
@@ -65,12 +66,28 @@ export default function AppPreview({
     let cancelled = false;
     const checkServer = async () => {
       try {
-        const res = await fetch(`/preview/${sessionId}/status?port=3000`);
+        const res = await fetch(`/preview/${sessionId}/status?port=${activePort}`);
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) {
-            setServerRunning(Boolean(data.running));
+            const isRunning = Boolean(data.running);
+            setServerRunning(isRunning);
             setCheckingStatus(false);
+            if (isRunning && data.port) {
+              setActivePort(data.port);
+              setUrl((prev) => {
+                if (prev === 'http://localhost:3000/' || prev.match(/^https?:\/\/localhost:\d+\/?$/)) {
+                  return `http://localhost:${data.port}/`;
+                }
+                return prev;
+              });
+              setInputUrl((prev) => {
+                if (prev === 'http://localhost:3000/' || prev.match(/^https?:\/\/localhost:\d+\/?$/)) {
+                  return `http://localhost:${data.port}/`;
+                }
+                return prev;
+              });
+            }
           }
         } else {
           if (!cancelled) {
@@ -92,7 +109,7 @@ export default function AppPreview({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [sessionId]);
+  }, [sessionId, activePort]);
 
   // Listen for real message events from injected spy script in proxied pages
   useEffect(() => {
@@ -254,7 +271,7 @@ export default function AppPreview({
     r.name.toLowerCase().includes(filterText.toLowerCase())
   );
 
-  const isLocalhostApp = inputUrl.includes('localhost:3000') || inputUrl.includes('127.0.0.1:3000');
+  const isLocalhostApp = inputUrl.includes('localhost') || inputUrl.includes('127.0.0.1');
 
   return (
     <div className="flex h-full w-full flex-col bg-[#202124] text-[#e8eaed] select-none overflow-hidden font-sans">
@@ -415,7 +432,7 @@ export default function AppPreview({
                     <line x1="12" y1="17" x2="12" y2="21" />
                   </svg>
                 </div>
-                <h3 className="text-sm font-semibold text-[#e8eaed]">No live dev server running on port 3000</h3>
+                <h3 className="text-sm font-semibold text-[#e8eaed]">No live dev server running</h3>
                 <p className="mt-1 max-w-sm text-xs text-[#9aa0a6] leading-relaxed">
                   The application server has not started yet. Run <code>npm run dev</code> from the terminal to launch your live preview.
                 </p>

@@ -153,11 +153,17 @@ export class AgentLoop {
 
         this.emit({ type: 'tool_result', name: toolCall.name, result });
 
+        // Cap long tool output in messages to prevent blowing token limits (e.g. Groq 8k TPM)
+        const safeResult =
+          result.length > 2500
+            ? `${result.slice(0, 2500)}\n\n[Output truncated: ${result.length - 2500} chars cut to preserve model token limit]`
+            : result;
+
         // Add the tool result to the conversation
         // The LLM needs to see what happened so it can decide what to do next
         messages.push({
           role: 'tool',
-          content: result,
+          content: safeResult,
           tool_call_id: toolCall.id,
         });
       }

@@ -366,10 +366,20 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
         }
 
         const output = await session.client.runCommand(cmdToRun);
-        const finalOutput =
-          cmdToRun !== trimmed
-            ? `[Started dev server in background]\n$ ${trimmed}\nServer running on port 3000. Logs routed to /tmp/dev-server.log`
-            : output;
+        let finalOutput = output;
+        if (cmdToRun !== trimmed) {
+          let detectedPort = '3000';
+          try {
+            if (existsSync('/tmp/dev-server.log')) {
+              const logContent = readFileSync('/tmp/dev-server.log', 'utf8');
+              const match = logContent.match(/(?:localhost|127\.0\.0\.1):(\d{4,5})/);
+              if (match && match[1]) {
+                detectedPort = match[1];
+              }
+            }
+          } catch {}
+          finalOutput = `[Started dev server in background]\n$ ${trimmed}\nServer running on port ${detectedPort}. Logs routed to /tmp/dev-server.log`;
+        }
         return { ok: true, output: finalOutput };
       } catch (err: any) {
         return reply.status(500).send({ ok: false, error: err.message });
@@ -470,7 +480,7 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     '/preview/:id/status',
     async (req, reply) => {
       const sessionId = req.params.id;
-      const port = Number(req.query.port ?? 3000);
+      const requestedPort = req.query.port ? Number(req.query.port) : 3000;
       const session = sessionManager.getSession(sessionId);
 
       if (!session) {
@@ -480,21 +490,50 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
         });
       }
 
-      let running = false;
+      const fetchFn = options.fetch ?? fetch;
+
+      // Extract detected port from dev server log if present
+      let detectedPort: number | null = null;
       try {
-        const fetchFn = options.fetch ?? fetch;
-        const probe = await fetchFn(`http://127.0.0.1:${port}/`, {
-          method: 'HEAD',
-        });
-        running = probe.ok || probe.status < 500;
-      } catch {
-        running = false;
+        if (existsSync('/tmp/dev-server.log')) {
+          const logContent = readFileSync('/tmp/dev-server.log', 'utf8');
+          const match = logContent.match(/(?:localhost|127\.0\.0\.1):(\d{4,5})/);
+          if (match && match[1]) {
+            detectedPort = Number(match[1]);
+          }
+        }
+      } catch {}
+
+      // Candidate ports to probe: requested port, log-detected port, and common dev ports
+      const candidates = Array.from(
+        new Set([
+          requestedPort,
+          ...(detectedPort ? [detectedPort] : []),
+          3000, 5173, 5174, 5175, 5176, 5177, 5178, 8080, 8000, 4200, 5000,
+        ])
+      );
+
+      let running = false;
+      let activePort = requestedPort;
+
+      for (const p of candidates) {
+        try {
+          const probe = await fetchFn(`http://127.0.0.1:${p}/`, {
+            method: 'HEAD',
+          });
+          if (probe.ok || probe.status < 500) {
+            running = true;
+            activePort = p;
+            break;
+          }
+        } catch {}
       }
 
       return {
         ok: true,
         sessionId,
-        port,
+        port: activePort,
+        requestedPort,
         running,
         sandbox: {
           id: session.sandbox.id,

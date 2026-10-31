@@ -9,6 +9,8 @@ import { executeTask } from './agent/task-runner';
 import type { AgentEvent } from './agent/loop';
 import { SessionManager } from './session/manager';
 import { SandboxClient } from './sandbox/client';
+import type { PrismaClient } from '@prisma/client';
+import { prisma as defaultPrisma } from './db';
 
 export interface InstallationRecord {
   installationId: string;
@@ -48,6 +50,8 @@ export interface BackendAppOptions {
   sessionManager?: SessionManager;
   /** Optional persistence file path (pass null to disable) */
   persistenceFile?: string | null;
+  /** Optional PrismaClient instance (defaults to singleton in src/db.ts) */
+  prisma?: PrismaClient;
 }
 
 /**
@@ -65,9 +69,10 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     });
   const eventListeners = new Map<string, Set<(event: AgentEvent) => void>>();
   const autoExecute = options.autoExecuteTasks ?? true;
+  const isTest = process.env.NODE_ENV === 'test' || options.fetch !== undefined;
+  const db = options.prisma !== undefined ? options.prisma : (isTest ? null : defaultPrisma);
 
   const sessionMetadata = new Map<string, { title?: string; messages: any[] }>();
-  const isTest = process.env.NODE_ENV === 'test' || options.fetch !== undefined;
   const persistenceFile =
     options.persistenceFile === null || (options.persistenceFile === undefined && isTest)
       ? null
@@ -112,6 +117,31 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   }
 
   loadPersistence();
+
+  async function loadDbPersistence() {
+    if (!db) return;
+    try {
+      const dbSessions = await db.session.findMany({
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
+      });
+      for (const s of dbSessions) {
+        if (!sessionMetadata.has(s.id)) {
+          sessionMetadata.set(s.id, {
+            title: s.title ?? undefined,
+            messages: s.messages.map((m) => {
+              try {
+                return JSON.parse(m.content);
+              } catch {
+                return { role: m.role, content: m.content };
+              }
+            }),
+          });
+          sessionManager.getOrCreateSession(s.id, s.repo ?? undefined).catch(() => {});
+        }
+      }
+    } catch {}
+  }
+  loadDbPersistence();
 
   const app = Fastify({ logger: false });
 
@@ -205,6 +235,30 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
    * List active sessions
    */
   app.get('/sessions', async () => {
+    if (db) {
+      try {
+        const dbSessions = await db.session.findMany({
+          include: { messages: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const s of dbSessions) {
+          if (!sessionMetadata.has(s.id)) {
+            sessionMetadata.set(s.id, {
+              title: s.title ?? undefined,
+              messages: s.messages.map((m) => {
+                try {
+                  return JSON.parse(m.content);
+                } catch {
+                  return { role: m.role, content: m.content };
+                }
+              }),
+            });
+            sessionManager.getOrCreateSession(s.id, s.repo ?? undefined).catch(() => {});
+          }
+        }
+      } catch {}
+    }
+
     return {
       ok: true,
       sessions: sessionManager.listSessions().map((s) => {
@@ -247,6 +301,22 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
         sessionMetadata.set(id, { ...existingMeta, title });
       }
       savePersistence();
+
+      try {
+        await db.session.upsert({
+          where: { id },
+          create: {
+            id,
+            title: title || 'New session',
+            repo: repo || session.repo,
+          },
+          update: {
+            ...(title ? { title } : {}),
+            ...(repo ? { repo } : {}),
+          },
+        });
+      } catch {}
+
       return {
         ok: true,
         session: {
@@ -306,6 +376,35 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       }
       sessionMetadata.set(id, meta);
       savePersistence();
+
+      try {
+        await db.session.upsert({
+          where: { id },
+          create: { id, title: title || meta.title || 'New session' },
+          update: title ? { title } : {},
+        });
+
+        if (message) {
+          await db.message.create({
+            data: {
+              sessionId: id,
+              role: message.role || 'user',
+              content: typeof message === 'string' ? message : JSON.stringify(message),
+            },
+          });
+        } else if (Array.isArray(messages)) {
+          for (const msg of messages) {
+            await db.message.create({
+              data: {
+                sessionId: id,
+                role: msg.role || 'user',
+                content: typeof msg === 'string' ? msg : JSON.stringify(msg),
+              },
+            });
+          }
+        }
+      } catch {}
+
       return { ok: true };
     },
   );
@@ -315,7 +414,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
    */
   app.delete<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
     const terminated = await sessionManager.terminateSession(req.params.id);
-    if (!terminated) {
+    let dbDeleted = false;
+    try {
+      await db.session.delete({ where: { id: req.params.id } });
+      dbDeleted = true;
+    } catch {}
+
+    if (!terminated && !dbDeleted && !sessionMetadata.has(req.params.id)) {
       return reply.status(404).send({ ok: false, error: 'Session not found' });
     }
     sessionMetadata.delete(req.params.id);
@@ -1019,6 +1124,14 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       sessionMetadata.set(sessionId, meta);
       savePersistence();
 
+      try {
+        await db.session.upsert({
+          where: { id: sessionId },
+          create: { id: sessionId, title: meta.title, repo: repoFullName },
+          update: { title: meta.title, repo: repoFullName },
+        });
+      } catch {}
+
       return {
         ok: true,
         repo: repoFullName,
@@ -1049,6 +1162,14 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     meta.title = 'Clean Workspace';
     sessionMetadata.set(sessionId, meta);
     savePersistence();
+
+    try {
+      await db.session.upsert({
+        where: { id: sessionId },
+        create: { id: sessionId, title: 'Clean Workspace' },
+        update: { title: 'Clean Workspace' },
+      });
+    } catch {}
 
     return { ok: true, output };
   });

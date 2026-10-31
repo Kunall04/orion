@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from './app';
 
 describe('backend', () => {
@@ -81,15 +81,25 @@ describe('backend', () => {
     });
 
     it('GET /api/github/installations/:id/repos returns 500 when credentials are not configured', async () => {
-      const app = buildApp();
+      const origAppId = process.env.GITHUB_APP_ID;
+      const origKeyPath = process.env.GITHUB_PRIVATE_KEY_PATH;
+      delete process.env.GITHUB_APP_ID;
+      delete process.env.GITHUB_PRIVATE_KEY_PATH;
 
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/github/installations/987654/repos',
-      });
+      try {
+        const app = buildApp({ githubAppId: '' });
 
-      expect(res.statusCode).toBe(500);
-      expect(res.json().error).toContain('GitHub App credentials');
+        const res = await app.inject({
+          method: 'GET',
+          url: '/api/github/installations/987654/repos',
+        });
+
+        expect(res.statusCode).toBe(500);
+        expect(res.json().error).toContain('GitHub App credentials');
+      } finally {
+        if (origAppId) process.env.GITHUB_APP_ID = origAppId;
+        if (origKeyPath) process.env.GITHUB_PRIVATE_KEY_PATH = origKeyPath;
+      }
     });
 
     it('GET /api/github/installations/:id/repos mints token and lists repositories', async () => {
@@ -239,6 +249,62 @@ describe('backend', () => {
 
       const delRes = await app.inject({ method: 'DELETE', url: '/sessions/ghost' });
       expect(delRes.statusCode).toBe(404);
+    });
+
+    it('persists sessions and messages through Prisma database client', async () => {
+      const mockPrisma = {
+        session: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'prisma-sess-1',
+              title: 'Prisma Saved Session',
+              repo: 'org/repo',
+              createdAt: new Date('2026-10-31T12:00:00Z'),
+              updatedAt: new Date('2026-10-31T12:00:00Z'),
+              messages: [{ id: 'm1', sessionId: 'prisma-sess-1', role: 'user', content: 'hello from prisma', createdAt: new Date() }],
+            },
+          ]),
+          upsert: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
+          findUnique: vi.fn().mockResolvedValue(null),
+          delete: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
+        },
+        message: {
+          create: vi.fn().mockResolvedValue({ id: 'm2' }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+      } as any;
+
+      const app = buildApp({ autoExecuteTasks: false, prisma: mockPrisma });
+
+      // Create session
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: { id: 'prisma-sess-1', title: 'Prisma Saved Session' },
+      });
+      expect(createRes.statusCode).toBe(200);
+      expect(mockPrisma.session.upsert).toHaveBeenCalled();
+
+      // Save message
+      const msgRes = await app.inject({
+        method: 'POST',
+        url: '/sessions/prisma-sess-1/messages',
+        payload: { message: { role: 'user', content: 'hello' } },
+      });
+      expect(msgRes.statusCode).toBe(200);
+      expect(mockPrisma.message.create).toHaveBeenCalled();
+
+      // List sessions with messages
+      const listRes = await app.inject({ method: 'GET', url: '/sessions' });
+      expect(listRes.statusCode).toBe(200);
+      expect(mockPrisma.session.findMany).toHaveBeenCalled();
+      const sessions = listRes.json().sessions;
+      expect(sessions.some((s: any) => s.id === 'prisma-sess-1')).toBe(true);
+
+      // Delete session
+      const delRes = await app.inject({ method: 'DELETE', url: '/sessions/prisma-sess-1' });
+      expect(delRes.statusCode).toBe(200);
+      expect(mockPrisma.session.delete).toHaveBeenCalled();
     });
   });
 

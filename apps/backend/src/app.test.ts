@@ -265,8 +265,9 @@ describe('backend', () => {
             },
           ]),
           upsert: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
-          findUnique: vi.fn().mockResolvedValue(null),
-          delete: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
+          update: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
+          findUnique: vi.fn().mockResolvedValue({ id: 'prisma-sess-1' }),
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         message: {
           create: vi.fn().mockResolvedValue({ id: 'm2' }),
@@ -274,6 +275,7 @@ describe('backend', () => {
         },
       } as any;
 
+      mockPrisma.$transaction = vi.fn(async (fn: any) => fn(mockPrisma));
       const app = buildApp({ autoExecuteTasks: false, prisma: mockPrisma });
 
       // Create session
@@ -304,7 +306,7 @@ describe('backend', () => {
       // Delete session
       const delRes = await app.inject({ method: 'DELETE', url: '/sessions/prisma-sess-1' });
       expect(delRes.statusCode).toBe(200);
-      expect(mockPrisma.session.delete).toHaveBeenCalled();
+      expect(mockPrisma.session.deleteMany).toHaveBeenCalled();
     });
   });
 

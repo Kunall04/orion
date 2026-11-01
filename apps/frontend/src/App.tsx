@@ -56,6 +56,7 @@ export interface SessionData extends SessionItem {
 const STORAGE_KEY_SESSIONS = 'orion_sessions';
 const STORAGE_KEY_ACTIVE = 'orion_active_session_id';
 const STORAGE_KEY_TAB = 'orion_right_panel_tab';
+const STORAGE_KEY_DIRTY = 'orion_unsaved_sessions';
 
 export const DEFAULT_CLEAN_SESSION: SessionData = {
   id: 's1',
@@ -71,6 +72,12 @@ function loadSavedSessions(): SessionData[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SESSIONS);
     if (raw) {
+      // Preserve the pre-database browser copy before the first reconciliation.
+      try {
+        if (!localStorage.getItem('orion_sessions_before_postgres')) {
+          localStorage.setItem('orion_sessions_before_postgres', raw);
+        }
+      } catch {}
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Discard legacy mock sessions if present in browser localStorage
@@ -490,6 +497,24 @@ export default function App() {
   const [showRepoModal, setShowRepoModal] = useState(false);
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [retryVersion, setRetryVersion] = useState(0);
+  const persistedRef = useRef(new Map<string, string>());
+  const pendingRef = useRef(new Map<string, Promise<void>>());
+  const failedRef = useRef(new Set<string>());
+  const deletedRef = useRef(new Set<string>());
+  const [initialDirty] = useState<Set<string>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_DIRTY) || '[]');
+      return new Set<string>(Array.isArray(saved) ? saved : []);
+    } catch { return new Set<string>(); }
+  });
+  const dirtyRef = useRef(initialDirty);
+
+  const rememberDirty = () => {
+    try { localStorage.setItem(STORAGE_KEY_DIRTY, JSON.stringify([...dirtyRef.current])); } catch {}
+  };
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || DEFAULT_CLEAN_SESSION;
 
@@ -630,56 +655,86 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeSession.feed, isTyping]);
 
-  /* Fetch active sessions on mount to sync sandbox port info and backend history */
+  /* Restore persisted chats before scheduling saves. Local dirty chats are recovery copies. */
   useEffect(() => {
+    let cancelled = false;
     fetch('/sessions')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.ok && Array.isArray(data.sessions) && data.sessions.length > 0) {
-          setSessions((prev) => {
-            const updated = prev.map((s) => {
-              const matched = data.sessions.find(
-                (bs: { id: string; sandbox?: { port: number; url: string }; title?: string; messages?: any[] }) =>
-                  bs.id === s.id,
-              );
-              if (matched) {
-                return {
-                  ...s,
-                  title: s.title === 'New session' && matched.title ? matched.title : s.title,
-                  sandboxPort: matched.sandbox?.port ?? s.sandboxPort,
-                  sandboxUrl: matched.sandbox?.url ?? s.sandboxUrl,
-                  feed:
-                    s.feed.length === 0 && Array.isArray(matched.messages) && matched.messages.length > 0
-                      ? matched.messages
-                      : s.feed,
-                };
-              }
-              return s;
-            });
-
-            // If backend has sessions not in local state, add them
-            for (const bs of data.sessions) {
-              if (!updated.some((s) => s.id === bs.id)) {
-                updated.push({
-                  id: bs.id,
-                  title: bs.title || 'Session',
-                  subtitle: 'Ready',
-                  status: 'idle',
-                  time: 'Saved',
-                  sandboxPort: bs.sandbox?.port,
-                  sandboxUrl: bs.sandbox?.url,
-                  repo: bs.repo,
-                  feed: Array.isArray(bs.messages) ? bs.messages : [],
-                  files: DEFAULT_FILES,
-                });
-              }
-            }
-            return updated;
-          });
-        }
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       })
-      .catch(() => {});
-  }, []);
+      .then((data) => {
+        if (cancelled || !data.ok || !Array.isArray(data.sessions)) return;
+        setSessions((cached) => {
+          const restored: SessionData[] = data.sessions.map((saved: any) => {
+            const local = cached.find((s) => s.id === saved.id);
+            const messages = Array.isArray(saved.messages) ? saved.messages : [];
+            const recover = Boolean(local && (dirtyRef.current.has(saved.id) || (messages.length === 0 && local.feed.length > 0)));
+            persistedRef.current.set(saved.id, JSON.stringify({ title: saved.title || 'New session', messages }));
+            return {
+              ...local, id: saved.id, title: recover ? local!.title : (saved.title || 'New session'),
+              status: 'idle' as const, time: 'Saved', repo: saved.repo || undefined,
+              sandboxPort: saved.sandbox?.port, sandboxUrl: saved.sandbox?.url,
+              feed: recover ? local!.feed : messages, files: local?.files || DEFAULT_FILES,
+            };
+          });
+          // Keep pre-database browser chats as recovery copies and import them on the next save.
+          for (const local of cached) {
+            if (!restored.some((s) => s.id === local.id) && (local.feed.length > 0 || restored.length === 0)) restored.push(local);
+          }
+          const next = restored.length ? restored : [DEFAULT_CLEAN_SESSION];
+          setActiveSessionId((id) => next.some((s) => s.id === id) ? id : next[0]!.id);
+          return next;
+        });
+        setSaveError('');
+        setHydrated(true);
+      })
+      .catch(() => {
+        if (!cancelled) setSaveError('Cannot load saved chats. Your browser copy is still available; reconnect and retry.');
+      });
+    return () => { cancelled = true; };
+  }, [retryVersion]);
+
+  /* Debounce streaming updates and serialize snapshots for each session. */
+  useEffect(() => {
+    if (!hydrated) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const session of sessions) {
+      if (deletedRef.current.has(session.id) || (!session.feed.length && !persistedRef.current.has(session.id))) continue;
+      const snapshot = JSON.stringify({ title: session.title, messages: session.feed });
+      if (persistedRef.current.get(session.id) === snapshot) continue;
+      dirtyRef.current.add(session.id);
+      rememberDirty();
+      timers.push(setTimeout(() => {
+        const previous = pendingRef.current.get(session.id) || Promise.resolve();
+        const next = previous.catch(() => {}).then(async () => {
+          if (deletedRef.current.has(session.id)) return;
+          const create = await fetch('/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: session.id, title: session.title, repo: session.repo }) });
+          if (!create.ok) throw new Error(`Create session: HTTP ${create.status}`);
+          const response = await fetch(`/sessions/${encodeURIComponent(session.id)}/messages`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: snapshot,
+          });
+          if (!response.ok) throw new Error(`Save messages: HTTP ${response.status}`);
+          persistedRef.current.set(session.id, snapshot);
+          // Do not clear a newer unsaved snapshot while this request was in flight.
+          const current = JSON.parse(localStorage.getItem(STORAGE_KEY_SESSIONS) || '[]') as SessionData[];
+          const latest = current.find((s) => s.id === session.id);
+          if (latest && JSON.stringify({ title: latest.title, messages: latest.feed }) === snapshot) {
+            dirtyRef.current.delete(session.id);
+            rememberDirty();
+          }
+          failedRef.current.delete(session.id);
+          if (failedRef.current.size === 0) setSaveError('');
+        }).catch(() => {
+          failedRef.current.add(session.id);
+          setSaveError('Chat could not be saved to PostgreSQL. Your browser copy is kept; reconnect and retry.');
+        });
+        pendingRef.current.set(session.id, next);
+      }, 400));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [sessions, hydrated, retryVersion]);
 
   /* Fetch real sandbox workspace files for the active session */
   useEffect(() => {
@@ -726,6 +781,7 @@ export default function App() {
    * Create a new blank session (and provision sandbox on backend)
    */
   const handleNewSession = async () => {
+    if (!hydrated) { showToast('Wait for saved chats to load, or retry the connection.', 'warning'); return; }
     const newId = `s-${Date.now()}`;
     const newSession: SessionData = {
       id: newId,
@@ -750,6 +806,7 @@ export default function App() {
           title: 'New session',
         }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (res.ok) {
         const data = await res.json();
         if (data.session?.sandbox) {
@@ -767,7 +824,7 @@ export default function App() {
         }
       }
     } catch {
-      // Backend offline or network error
+      setSaveError('Session could not be saved to PostgreSQL. Your browser copy is kept; reconnect and retry.');
     }
   };
 
@@ -775,10 +832,20 @@ export default function App() {
    * Delete a session and destroy its sandbox container on backend
    */
   const handleDeleteSession = async (id: string) => {
+    if (!hydrated) { showToast('Reconnect before deleting a saved chat.', 'warning'); return; }
+    deletedRef.current.add(id);
     try {
-      await fetch(`/sessions/${id}`, { method: 'DELETE' });
+      await pendingRef.current.get(id);
+      const response = await fetch(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
+      dirtyRef.current.delete(id);
+      failedRef.current.delete(id);
+      persistedRef.current.delete(id);
+      rememberDirty();
     } catch {
-      // Ignore network errors
+      deletedRef.current.delete(id);
+      setSaveError('Session could not be deleted from PostgreSQL. Please retry.');
+      return;
     }
 
     setSessions((prev) => {
@@ -807,6 +874,7 @@ export default function App() {
    * Handle prompt submission — sends to backend POST /tasks and streams live SSE events
    */
   const handleSend = async (text: string) => {
+    if (!hydrated) { showToast('Wait for saved chats to load, or retry the connection.', 'warning'); return; }
     const userMsgId = `user-${Date.now()}`;
     const agentTurnId = `agent-${Date.now()}`;
     const userMsg: ChatMsg = { id: userMsgId, role: 'user', text };
@@ -1102,6 +1170,9 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-page text-ink">
       <ToastContainer />
+      {saveError && <div role="alert" className="fixed top-2 left-1/2 z-50 -translate-x-1/2 rounded-control bg-amber-500 px-4 py-2 text-sm text-black shadow-raised">
+        {saveError} <button className="ml-2 underline" onClick={() => { setHydrated(false); setRetryVersion((v) => v + 1); }}>Retry</button>
+      </div>}
 
       {/* ── Left sidebar ── */}
       <div className={`transition-all duration-200 overflow-hidden flex shrink-0 ${sidebarCollapsed ? 'w-0 border-r-0' : 'w-[230px]'}`}>

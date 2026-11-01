@@ -100,7 +100,7 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
   }
 
   function savePersistence() {
-    if (!persistenceFile) return;
+    if (!persistenceFile || db) return;
     try {
       mkdirSync(dirname(persistenceFile), { recursive: true });
       const data = {
@@ -116,34 +116,18 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     } catch {}
   }
 
-  loadPersistence();
+  if (!db) loadPersistence();
 
-  async function loadDbPersistence() {
-    if (!db) return;
-    try {
-      const dbSessions = await db.session.findMany({
-        include: { messages: { orderBy: { createdAt: 'asc' } } },
-      });
-      for (const s of dbSessions) {
-        if (!sessionMetadata.has(s.id)) {
-          sessionMetadata.set(s.id, {
-            title: s.title ?? undefined,
-            messages: s.messages.map((m) => {
-              try {
-                return JSON.parse(m.content);
-              } catch {
-                return { role: m.role, content: m.content };
-              }
-            }),
-          });
-          sessionManager.getOrCreateSession(s.id, s.repo ?? undefined).catch(() => {});
-        }
-      }
-    } catch {}
-  }
-  loadDbPersistence();
-
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: { level: 'error' } });
+  app.setErrorHandler((error, _request, reply) => {
+    const status = error.statusCode ?? 500;
+    if (status >= 500) {
+      // Prisma errors may contain message content; log the error class/code, not query data.
+      app.log.error({ errorName: error.name, code: (error as { code?: string }).code }, 'Request failed');
+      return reply.status(status).send({ ok: false, error: 'Internal server error' });
+    }
+    return reply.status(status).send({ ok: false, error: error.message });
+  });
 
   // CORS support
   app.addHook('onRequest', async (req, reply) => {
@@ -231,198 +215,119 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     });
   });
 
-  /**
-   * List active sessions
-   */
+  /** PostgreSQL is authoritative when a client is configured. */
   app.get('/sessions', async () => {
     if (db) {
-      try {
-        const dbSessions = await db.session.findMany({
-          include: { messages: { orderBy: { createdAt: 'asc' } } },
-          orderBy: { createdAt: 'desc' },
-        });
-        for (const s of dbSessions) {
-          if (!sessionMetadata.has(s.id)) {
-            sessionMetadata.set(s.id, {
-              title: s.title ?? undefined,
-              messages: s.messages.map((m) => {
-                try {
-                  return JSON.parse(m.content);
-                } catch {
-                  return { role: m.role, content: m.content };
-                }
-              }),
-            });
-            sessionManager.getOrCreateSession(s.id, s.repo ?? undefined).catch(() => {});
-          }
-        }
-      } catch {}
-    }
-
-    return {
-      ok: true,
-      sessions: sessionManager.listSessions().map((s) => {
-        const meta = sessionMetadata.get(s.id);
+      const saved = await db.session.findMany({
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      const sessions = await Promise.all(saved.map(async (s) => {
+        const active = await sessionManager.getOrCreateSession(s.id, s.repo ?? undefined);
         return {
-          id: s.id,
-          title: meta?.title,
-          repo: s.repo,
-          sandbox: s.sandbox,
+          id: s.id, title: s.title, repo: s.repo, sandbox: active.sandbox,
           createdAt: s.createdAt,
-          messages: meta?.messages ?? [],
+          messages: s.messages.map((m) => {
+            try { return JSON.parse(m.content); }
+            catch { return { id: m.id, role: m.role, text: m.content }; }
+          }),
         };
-      }),
-    };
-  });
-
-  /**
-   * Create or retrieve a session with a dedicated sandbox
-   */
-  app.post<{ Body: { id: string; repo?: string; title?: string } }>(
-    '/sessions',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['id'],
-          properties: {
-            id: { type: 'string', minLength: 1 },
-            repo: { type: 'string' },
-            title: { type: 'string' },
-          },
-        },
-      },
-    },
-    async (req) => {
-      const { id, repo, title } = req.body;
-      const session = await sessionManager.getOrCreateSession(id, repo);
-      if (title) {
-        const existingMeta = sessionMetadata.get(id) || { messages: [] };
-        sessionMetadata.set(id, { ...existingMeta, title });
-      }
-      savePersistence();
-
-      try {
-        await db.session.upsert({
-          where: { id },
-          create: {
-            id,
-            title: title || 'New session',
-            repo: repo || session.repo,
-          },
-          update: {
-            ...(title ? { title } : {}),
-            ...(repo ? { repo } : {}),
-          },
-        });
-      } catch {}
-
-      return {
-        ok: true,
-        session: {
-          id: session.id,
-          repo: session.repo,
-          sandbox: session.sandbox,
-          createdAt: session.createdAt,
-        },
-      };
-    },
-  );
-
-  /**
-   * Get single session details
-   */
-  app.get<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
-    const session = sessionManager.getSession(req.params.id);
-    if (!session) {
-      return reply.status(404).send({ ok: false, error: 'Session not found' });
+      }));
+      return { ok: true, sessions };
     }
-    const meta = sessionMetadata.get(req.params.id);
-    return {
-      ok: true,
-      session: {
-        id: session.id,
-        title: meta?.title,
-        repo: session.repo,
-        sandbox: session.sandbox,
-        createdAt: session.createdAt,
-        messages: meta?.messages ?? [],
-      },
-    };
+    return { ok: true, sessions: sessionManager.listSessions().map((s) => ({
+      id: s.id, title: sessionMetadata.get(s.id)?.title, repo: s.repo,
+      sandbox: s.sandbox, createdAt: s.createdAt, messages: sessionMetadata.get(s.id)?.messages ?? [],
+    })) };
   });
 
-  /**
-   * Get session message history
-   */
-  app.get<{ Params: { id: string } }>('/sessions/:id/messages', async (req) => {
-    const meta = sessionMetadata.get(req.params.id);
-    return { ok: true, messages: meta?.messages ?? [] };
+  app.post<{ Body: { id: string; repo?: string; title?: string } }>('/sessions', {
+    schema: { body: { type: 'object', required: ['id'], properties: {
+      id: { type: 'string', minLength: 1 }, repo: { type: 'string' }, title: { type: 'string' },
+    } } },
+  }, async (req) => {
+    const { id, repo, title } = req.body;
+    if (db) await db.session.upsert({
+      where: { id }, create: { id, title: title || 'New session', repo },
+      update: { ...(title ? { title } : {}), ...(repo ? { repo } : {}) },
+    });
+    const session = await sessionManager.getOrCreateSession(id, repo);
+    const existing = sessionMetadata.get(id) || { messages: [] };
+    sessionMetadata.set(id, { ...existing, ...(title ? { title } : {}) });
+    savePersistence();
+    return { ok: true, session: { id: session.id, repo: session.repo, sandbox: session.sandbox, createdAt: session.createdAt } };
   });
 
-  /**
-   * Save session message history
-   */
+  app.get<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
+    if (db) {
+      const saved = await db.session.findUnique({ where: { id: req.params.id }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
+      if (!saved) return reply.status(404).send({ ok: false, error: 'Session not found' });
+      const session = await sessionManager.getOrCreateSession(saved.id, saved.repo ?? undefined);
+      return { ok: true, session: { id: saved.id, title: saved.title, repo: saved.repo, sandbox: session.sandbox,
+        createdAt: saved.createdAt, messages: saved.messages.map((m) => {
+          try { return JSON.parse(m.content); } catch { return { id: m.id, role: m.role, text: m.content }; }
+        }) } };
+    }
+    const session = sessionManager.getSession(req.params.id);
+    if (!session) return reply.status(404).send({ ok: false, error: 'Session not found' });
+    const meta = sessionMetadata.get(req.params.id);
+    return { ok: true, session: { id: session.id, title: meta?.title, repo: session.repo,
+      sandbox: session.sandbox, createdAt: session.createdAt, messages: meta?.messages ?? [] } };
+  });
+
+  app.get<{ Params: { id: string } }>('/sessions/:id/messages', async (req, reply) => {
+    if (db) {
+      const saved = await db.session.findUnique({ where: { id: req.params.id }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
+      if (!saved) return reply.status(404).send({ ok: false, error: 'Session not found' });
+      return { ok: true, messages: saved.messages.map((m) => {
+        try { return JSON.parse(m.content); } catch { return { id: m.id, role: m.role, text: m.content }; }
+      }) };
+    }
+    return { ok: true, messages: sessionMetadata.get(req.params.id)?.messages ?? [] };
+  });
+
+  // A full snapshot replaces the previous snapshot in one transaction.
   app.post<{ Params: { id: string }; Body: { messages?: any[]; message?: any; title?: string } }>(
-    '/sessions/:id/messages',
-    async (req) => {
+    '/sessions/:id/messages', async (req, reply) => {
       const { id } = req.params;
       const { messages, message, title } = req.body || {};
+      if (!Array.isArray(messages) && !message) return reply.status(400).send({ ok: false, error: 'A message or messages array is required' });
+      if (db) {
+        const exists = await db.session.findUnique({ where: { id }, select: { id: true } });
+        if (!exists) return reply.status(404).send({ ok: false, error: 'Session not found' });
+        await db.$transaction(async (tx) => {
+          // Lock this session row until the snapshot is committed.
+          await tx.session.update({ where: { id }, data: { ...(title ? { title } : {}), updatedAt: new Date() } });
+          if (Array.isArray(messages)) {
+            await tx.message.deleteMany({ where: { sessionId: id } });
+            // Distinct timestamps preserve the order of the snapshot when it is reloaded.
+            const start = Date.now();
+            if (messages.length) await tx.message.createMany({ data: messages.map((msg, index) => ({
+              sessionId: id, role: msg?.role || 'user', content: JSON.stringify(msg), createdAt: new Date(start + index),
+            })) });
+          } else {
+            await tx.message.create({ data: { sessionId: id, role: message?.role || 'user', content: JSON.stringify(message) } });
+          }
+        });
+      }
       const meta = sessionMetadata.get(id) || { messages: [] };
       if (title) meta.title = title;
-      if (Array.isArray(messages)) {
-        meta.messages = messages;
-      } else if (message) {
-        meta.messages = [...meta.messages, message];
-      }
+      if (Array.isArray(messages)) meta.messages = messages;
+      else meta.messages = [...meta.messages, message];
       sessionMetadata.set(id, meta);
       savePersistence();
-
-      try {
-        await db.session.upsert({
-          where: { id },
-          create: { id, title: title || meta.title || 'New session' },
-          update: title ? { title } : {},
-        });
-
-        if (message) {
-          await db.message.create({
-            data: {
-              sessionId: id,
-              role: message.role || 'user',
-              content: typeof message === 'string' ? message : JSON.stringify(message),
-            },
-          });
-        } else if (Array.isArray(messages)) {
-          for (const msg of messages) {
-            await db.message.create({
-              data: {
-                sessionId: id,
-                role: msg.role || 'user',
-                content: typeof msg === 'string' ? msg : JSON.stringify(msg),
-              },
-            });
-          }
-        }
-      } catch {}
-
       return { ok: true };
     },
   );
 
-  /**
-   * Terminate session and release its sandbox
-   */
   app.delete<{ Params: { id: string } }>('/sessions/:id', async (req, reply) => {
-    const terminated = await sessionManager.terminateSession(req.params.id);
-    let dbDeleted = false;
-    try {
-      await db.session.delete({ where: { id: req.params.id } });
-      dbDeleted = true;
-    } catch {}
-
-    if (!terminated && !dbDeleted && !sessionMetadata.has(req.params.id)) {
+    if (db) {
+      const result = await db.session.deleteMany({ where: { id: req.params.id } });
+      if (!result.count) return reply.status(404).send({ ok: false, error: 'Session not found' });
+    } else if (!sessionManager.getSession(req.params.id) && !sessionMetadata.has(req.params.id)) {
       return reply.status(404).send({ ok: false, error: 'Session not found' });
     }
+    await sessionManager.terminateSession(req.params.id);
     sessionMetadata.delete(req.params.id);
     savePersistence();
     return { ok: true, terminated: true };
@@ -1124,13 +1029,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
       sessionMetadata.set(sessionId, meta);
       savePersistence();
 
-      try {
+      if (db) {
         await db.session.upsert({
           where: { id: sessionId },
           create: { id: sessionId, title: meta.title, repo: repoFullName },
           update: { title: meta.title, repo: repoFullName },
         });
-      } catch {}
+      }
 
       return {
         ok: true,
@@ -1163,13 +1068,13 @@ export function buildApp(options: BackendAppOptions = {}): FastifyInstance {
     sessionMetadata.set(sessionId, meta);
     savePersistence();
 
-    try {
+    if (db) {
       await db.session.upsert({
         where: { id: sessionId },
         create: { id: sessionId, title: 'Clean Workspace' },
         update: { title: 'Clean Workspace' },
       });
-    } catch {}
+    }
 
     return { ok: true, output };
   });
